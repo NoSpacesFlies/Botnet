@@ -1,3 +1,4 @@
+ufw disable
 cd bot
 apt update -y
 
