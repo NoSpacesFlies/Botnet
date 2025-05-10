@@ -1,9 +1,11 @@
 ![Img](image.webp?raw=true "Screenshot")
+Note: The cross compilers in script are not reliable and for ubuntu only
+Note: Someone should do a pull request to add better compiler
 # What is new? (2025-4-23 | 23 april 2025)
 - Fixed segmentation error in command
 - Fixed command crashing on no arguments
 - Fixed terminal cursor for putty users when there are 2 sessions
-- Fixed memory allocation in bot, optimising it
+- Fixed memory allocation in bot, optimising it (todo add slowmode opt)
 - Fixed udpraw and syn raw methods
 - Optimised command processor using Github Copilot AI (Structure)
 - Added Raknet method (Raknet Unconnected ping flood)
@@ -15,14 +17,13 @@
 - Fixed Duplicate botcount and added bot validator
 - Finally added !opthelp & !exit for safe exit
 - Took +30 hours for testing, optimising & best ai structure & code fixes
-- 
 # Next update estimated times
 - 5 May 2025
 - 20 May 2025
 
 # XS Botnet
 - made by: daylight911 (discord), FuckIsra3l(telegram)
-- Made in github codespaces with copilot, there may be some bugs
+- Made in github codespaces(+Make & C ext)with copilot, there may be some bugs
 # Features:
 - Clear scren
 - Stopall
