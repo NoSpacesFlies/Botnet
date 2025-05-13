@@ -1,6 +1,8 @@
 ![Img](image.webp?raw=true "Screenshot")
 Note: The cross compilers in script are not reliable and for ubuntu only
 Note: Someone should do a pull request to add better compiler
+# P.S: Update started at 11 may 2025
+- Fixed segmentation errors, zombie connections and issues done for now (30% done)
 # What is new? (2025-4-23 | 23 april 2025)
 - Fixed segmentation error in command
 - Fixed command crashing on no arguments
