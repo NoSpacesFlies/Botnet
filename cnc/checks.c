@@ -1,9 +1,10 @@
-#include "checks.h"
+#include "headers/checks.h"
 #include <arpa/inet.h>
 #include <string.h>
 #include <ctype.h>
 
 int validate_ip(const char *ip) {
+    if (!ip) return 0;
     struct sockaddr_in sa;
     return inet_pton(AF_INET, ip, &(sa.sin_addr));
 }
@@ -16,7 +17,7 @@ int validate_psize(int psize, const char *cmd) {
     if (psize <= 0) return 0;
     if (strncmp(cmd, "!vse", 4) == 0 && psize > 1492) return 0;
     if (strncmp(cmd, "!raknet", 7) == 0 && psize > 1492) return 0;
-    if ((strncmp(cmd, "!udp", 4) == 0 || strncmp(cmd, "!syn", 4) == 0) && psize > 64500) return 0;
+    if ((strncmp(cmd, "!udp", 4) == 0 || strncmp(cmd, "!syn", 4) == 0 || strncmp(cmd, "!icmp", 5) == 0) && psize > 64500) return 0;
     return 1;
 }
 

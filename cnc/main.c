@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include "login_utils.h"
-#include "user_handler.h"
-#include "botnet.h"
+#include "headers/login_utils.h"
+#include "headers/user_handler.h"
+#include "headers/botnet.h"
 
 int main(int argc, char *argv[]) {
     if (argc != 4) {

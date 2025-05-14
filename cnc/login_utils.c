@@ -1,4 +1,4 @@
-#include "login_utils.h"
+#include "headers/login_utils.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -7,7 +7,9 @@ int user_count = 0;
 
 void load_users() {
     FILE *file = fopen("logins.txt", "r");
-    while (fscanf(file, "%s %s %d %d", users[user_count].user, users[user_count].pass, &users[user_count].maxtime, &users[user_count].maxbots) != EOF) {
+    if (!file) return;
+    while (user_count < MAX_USERS && fscanf(file, "%49s %49s %d %d", users[user_count].user, users[user_count].pass, &users[user_count].maxtime, &users[user_count].maxbots) == 4) {
+        users[user_count].is_logged_in = 0;
         user_count++;
     }
     fclose(file);
@@ -15,7 +17,7 @@ void load_users() {
 
 int check_login(const char *user, const char *pass) {
     for (int i = 0; i < user_count; i++) {
-        if (strcmp(user, users[i].user) == 0 && strcmp(pass, users[i].pass) == 0) {
+        if (strncmp(user, users[i].user, sizeof(users[i].user)) == 0 && strncmp(pass, users[i].pass, sizeof(users[i].pass)) == 0) {
             if (users[i].is_logged_in) {
                 return -2;
             }

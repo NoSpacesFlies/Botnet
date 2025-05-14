@@ -13,6 +13,10 @@
 #define RESET "\033[0m"
 #define RED "\033[1;31m"
 #define BLUE "\033[1;34m"
+#define LIGHT_PINK "\033[1;95m"
+#define NEON "\033[1;96m"
+#define PINK "\033[1;35m"
+#define GREEN "\033[1;32m"
 
 typedef struct {
     int socket;
