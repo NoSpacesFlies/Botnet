@@ -134,6 +134,8 @@ void* handle_client(void* arg) {
 
     int user_index = check_login(username, password);
     if (user_index == -1) {
+        // Next time dont update file directly
+        // Note: backup before trying solution
         snprintf(buffer, sizeof(buffer), "\r" RED "Invalid login" RESET "\r\n");
         send(client_socket, buffer, strlen(buffer), 0);
         close(client_socket);
