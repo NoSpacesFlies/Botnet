@@ -7,9 +7,6 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <signal.h>
-#include <termios.h>
-#include <fcntl.h>
-#include <sys/select.h>
 
 int user_sockets[MAX_USERS] = {0};
 pthread_mutex_t user_sockets_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -60,59 +57,6 @@ void cleanup_user_session(int user_index) {
     pthread_mutex_unlock(&user_sockets_mutex);
 }
 
-void read_until_newline(int socket, char* buffer, size_t max_len) {
-    size_t pos = 0;
-    char c;
-    fd_set readfds;
-    struct timeval tv;
-    
-    while (pos < max_len - 1) {
-        FD_ZERO(&readfds);
-        FD_SET(socket, &readfds);
-        tv.tv_sec = 1;
-        tv.tv_usec = 0;
-        
-        int ready = select(socket + 1, &readfds, NULL, NULL, &tv);
-        if (ready <= 0) break;
-        
-        if (recv(socket, &c, 1, 0) <= 0) break;
-        
-        // Skip telnet control sequences
-        if (c == 255) { // IAC byte
-            char dummy[2];
-            recv(socket, dummy, 2, 0); // Skip command and option bytes
-            continue;
-        }
-        
-        if (c == '\n' || c == '\r') {
-            if (pos > 0) break;
-            continue;
-        }
-        
-        if (c >= 32 && c <= 126) {
-            buffer[pos++] = c;
-        }
-    }
-    
-    buffer[pos] = '\0';
-    
-    // Consume any remaining newline characters
-    while (1) {
-        FD_ZERO(&readfds);
-        FD_SET(socket, &readfds);
-        tv.tv_sec = 0;
-        tv.tv_usec = 100000; // 100ms timeout
-        
-        if (select(socket + 1, &readfds, NULL, NULL, &tv) <= 0) break;
-        
-        if (recv(socket, &c, 1, MSG_PEEK) <= 0) break;
-        
-        if (c != '\n' && c != '\r') break;
-        
-        recv(socket, &c, 1, 0); // Consume the newline
-    }
-}
-
 void* handle_client(void* arg) {
     setup_signal_handlers();
     int client_socket = *((int*)arg);
@@ -131,53 +75,63 @@ void* handle_client(void* arg) {
         return NULL;
     }
 
-    // Thoroughly clean input buffer and set up telnet options
-    clean_socket_buffer(client_socket);
-    const char* init_seq = 
-        "\377\374\042"    // WONT LINEMODE
-        "\377\375\003"    // WILL SUPPRESS GO AHEAD
-        "\377\373\001"    // WILL ECHO
-        "\377\373\003";   // WILL SUPPRESS GO AHEAD
-    send(client_socket, init_seq, strlen(init_seq), MSG_NOSIGNAL);
-    usleep(100000);
+    char discard_buf[256];
+    while (recv(client_socket, discard_buf, sizeof(discard_buf), MSG_DONTWAIT) > 0) {}
 
     char buffer[256] = {0};
+    int written = snprintf(buffer, sizeof(buffer), "\r" YELLOW "Login: " RESET);
+    if (written <= 0 || written >= (int)sizeof(buffer)) {
+        close(client_socket);
+        return NULL;
+    }
+    if (send(client_socket, buffer, (size_t)written, 0) < 0) {
+        close(client_socket);
+        return NULL;
+    }
+
+    usleep(2800000);
+
     char username[64] = {0}, password[64] = {0};
+    ssize_t len = recv(client_socket, username, sizeof(username) - 1, 0);
+    if (len <= 0) {
+        close(client_socket);
+        return NULL;
+    }
+    username[len] = 0;
+    int uidx = 0;
+    for (int i = 0; i < len && username[i] != '\r' && username[i] != '\n'; i++) {
+        if (username[i] >= 32 && username[i] <= 126) {
+            username[uidx++] = username[i];
+        }
+    }
+    username[uidx] = 0;
 
-    // Handle username input
-    if (send(client_socket, "\r" YELLOW "Login: " RESET, strlen("\r" YELLOW "Login: " RESET), MSG_NOSIGNAL) < 0) {
+    written = snprintf(buffer, sizeof(buffer), "\r" YELLOW "Password: " RESET);
+    if (written <= 0 || written >= (int)sizeof(buffer)) {
+        close(client_socket);
+        return NULL;
+    }
+    if (send(client_socket, buffer, (size_t)written, 0) < 0) {
         close(client_socket);
         return NULL;
     }
 
-    read_until_newline(client_socket, username, sizeof(username));
-    if (strlen(username) == 0) {
+    usleep(2800000);
+
+    len = recv(client_socket, password, sizeof(password) - 1, 0);
+    if (len <= 0) {
         close(client_socket);
         return NULL;
     }
-
-    // Handle password input with echo off
-    const char* noecho = "\377\374\001"; // WONT ECHO
-    send(client_socket, noecho, strlen(noecho), MSG_NOSIGNAL);
-    usleep(100000);
-
-    if (send(client_socket, "\r" YELLOW "Password: " RESET, strlen("\r" YELLOW "Password: " RESET), MSG_NOSIGNAL) < 0) {
-        close(client_socket);
-        return NULL;
+    password[len] = 0;
+    int pidx = 0;
+    for (int i = 0; i < len && password[i] != '\r' && password[i] != '\n'; i++) {
+        if (password[i] >= 32 && password[i] <= 126) {
+            password[pidx++] = password[i];
+        }
     }
+    password[pidx] = 0;
 
-    read_until_newline(client_socket, password, sizeof(password));
-    if (strlen(password) == 0) {
-        close(client_socket);
-        return NULL;
-    }
-
-    // Restore echo
-    const char* will_echo = "\377\373\001"; // WILL ECHO
-    send(client_socket, will_echo, strlen(will_echo), MSG_NOSIGNAL);
-    send(client_socket, "\r\n", 2, MSG_NOSIGNAL);
-    
-    // Rest of the login process
     int user_index = check_login(username, password);
     if (user_index == -1) {
         snprintf(buffer, sizeof(buffer), "\r" RED "Invalid login" RESET "\r\n");
