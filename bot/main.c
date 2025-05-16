@@ -24,25 +24,25 @@
 #define MAX_THREADS 1
 
 const char* get_arch() {
-    #if defined(__aarch64__)
+    #ifdef ARCH_aarch64
     return "aarch64";
-    #elif defined(__arm__)
+    #elif defined(ARCH_arm)
     return "arm";
-    #elif defined(__m68k__)
+    #elif defined(ARCH_m68k)
     return "m68k";
-    #elif defined(__mips__)
+    #elif defined(ARCH_mips)
     return "mips";
-    #elif defined(__mipsel__)
+    #elif defined(ARCH_mipsel)
     return "mipsel";
-    #elif defined(__powerpc64__)
+    #elif defined(ARCH_powerpc64)
     return "powerpc64";
-    #elif defined(__sh__)
+    #elif defined(ARCH_sh4)
     return "sh4";
-    #elif defined(__sparc__)
+    #elif defined(ARCH_sparc)
     return "sparc";
-    #elif defined(__x86_64__)
+    #elif defined(ARCH_x86_64)
     return "x86_64";
-    #elif defined(__i386__)
+    #elif defined(ARCH_i686)
     return "i686";
     #else
     return "unknown";
