@@ -518,28 +518,19 @@ void handle_bots_command(char *response) {
     const char* arch_names[] = {"mips", "mipsel", "x86_64", "aarch64", "arm", "x86", "m68k", "i686", "sparc", "powerpc64", "sh4", "unknown"};
     
     pthread_mutex_lock(&bot_mutex);
+    
     for (int i = 0; i < bot_count; i++) {
         if (!bots[i].is_valid) continue;
-        for (int j = i + 1; j < bot_count; j++) {
-            if (!bots[j].is_valid) continue;
-            if (bots[i].address.sin_addr.s_addr == bots[j].address.sin_addr.s_addr) {
-                bots[i].is_valid = 0;
+        valid_bots++;
+        
+        for (int j = 0; j < 12; j++) {
+            if (strcmp(bots[i].arch, arch_names[j]) == 0) {
+                arch_count[j]++;
                 break;
             }
         }
     }
-
-    for (int i = 0; i < bot_count; i++) {
-        if (bots[i].is_valid) {
-            valid_bots++;
-            for (int j = 0; j < 12; j++) {
-                if (strcmp(bots[i].arch, arch_names[j]) == 0) {
-                    arch_count[j]++;
-                    break;
-                }
-            }
-        }
-    }
+    
     pthread_mutex_unlock(&bot_mutex);
 
     int offset = snprintf(response, MAX_COMMAND_LENGTH, YELLOW "All bots: %d\r\n" RESET, valid_bots);
