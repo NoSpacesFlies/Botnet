@@ -62,7 +62,7 @@ void handle_command(const char *command, int sock) {
         }
     }
 
-    if (strcmp(command, "ping") == 0) {
+    if (strncmp(command, "ping", 4) == 0) {
         char buffer[256];
         snprintf(buffer, sizeof(buffer), "pong %s", get_arch());
         send(sock, buffer, strlen(buffer), 0);
