@@ -12,5 +12,6 @@ extern int global_cooldown;
 
 void process_command(const User *user, const char *command, int client_socket, const char *user_ip);
 int is_attack_command(const char *command);
+void handle_admin_command(const User *user, char *response);
 
 #endif

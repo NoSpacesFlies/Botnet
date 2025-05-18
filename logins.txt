@@ -1,2 +1,0 @@
-flies kaboom 60 400
-user password maxtime maxbots

@@ -6,9 +6,28 @@ User users[MAX_USERS];
 int user_count = 0;
 
 void load_users() {
-    FILE *file = fopen("logins.txt", "r");
+    FILE *file = fopen("database/logins.txt", "r");
     if (!file) return;
-    while (user_count < MAX_USERS && fscanf(file, "%49s %49s %d %d", users[user_count].user, users[user_count].pass, &users[user_count].maxtime, &users[user_count].maxbots) == 4) {
+    
+    char line[256];
+    while (user_count < MAX_USERS && fgets(line, sizeof(line), file)) {
+        users[user_count].is_admin = 0;
+        
+        if (sscanf(line, "%49s %49s %d %d admin", 
+            users[user_count].user, 
+            users[user_count].pass, 
+            &users[user_count].maxtime, 
+            &users[user_count].maxbots) == 4) {
+            users[user_count].is_admin = 1;
+        } 
+        else if (sscanf(line, "%49s %49s %d %d", 
+            users[user_count].user, 
+            users[user_count].pass, 
+            &users[user_count].maxtime, 
+            &users[user_count].maxbots) != 4) {
+            continue;
+        }
+        
         users[user_count].is_logged_in = 0;
         user_count++;
     }

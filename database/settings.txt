@@ -1,0 +1,5 @@
+filelogs: yes
+logips: yes
+globalstopall: yes
+rootuser: flies
+globalusercommand: yes

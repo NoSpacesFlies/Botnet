@@ -1,2 +1,0 @@
-filelogs: yes
-logips: yes

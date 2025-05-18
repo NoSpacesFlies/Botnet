@@ -5,7 +5,7 @@
 void log_command(const char* user, const char* ip, const char* command) {
     int filelogs = 1;
     int logips = 1;
-    FILE* sf = fopen("settings.txt", "r");
+    FILE* sf = fopen("database/settings.txt", "r");
     if (sf) {
         char line[128] = {0};
         while (fgets(line, sizeof(line), sf)) {
@@ -24,7 +24,7 @@ void log_command(const char* user, const char* ip, const char* command) {
         snprintf(logline, sizeof(logline), "%s ran command: %s\n", user, command);
     printf("%s", logline);
     if (filelogs) {
-        FILE* f = fopen("logs.txt", "a");
+        FILE* f = fopen("database/logs.txt", "a");
         if (f) {
             fputs(logline, f);
             fclose(f);
@@ -35,7 +35,7 @@ void log_command(const char* user, const char* ip, const char* command) {
 
 void log_bot_join(const char* arch, const char* ip) {
     int filelogs = 1;
-    FILE* sf = fopen("settings.txt", "r");
+    FILE* sf = fopen("database/settings.txt", "r");
     if (sf) {
         char line[128] = {0};
         while (fgets(line, sizeof(line), sf)) {
@@ -49,7 +49,7 @@ void log_bot_join(const char* arch, const char* ip) {
     snprintf(logline, sizeof(logline), "[BOT_JOINED]: %s %s\n", ip, arch);
     printf("%s", logline);
     if (filelogs) {
-        FILE* f = fopen("logs.txt", "a");
+        FILE* f = fopen("database/logs.txt", "a");
         if (f) {
             fputs(logline, f);
             fclose(f);

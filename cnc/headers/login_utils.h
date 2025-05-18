@@ -9,6 +9,7 @@ typedef struct {
     int maxtime;
     int maxbots;
     int is_logged_in;
+    int is_admin;
 } User;
 
 extern User users[MAX_USERS];

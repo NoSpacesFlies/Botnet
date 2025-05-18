@@ -15,7 +15,7 @@
 - Finally added !opthelp & !exit for safe exit
 - Took +30 hours for testing, optimising & best ai structure & code fixes
 
-# New changelog: 13 may 2025 (7:35 / GMT+3)
+# New changelog: 13 may 2025 (7:35 PM / GMT+3)
 - Fixed Some buffer overflows
 - Optimised all methods
 - Placed header file in /Headers file for better structure
@@ -31,11 +31,30 @@
 - Changed !help command
 - Added botcount= option to limit bots
 
+# New changelog: 18 may 2025 (3:50 AM / GMT+3)
+- Added simple killer for known qbots
+- Added !adduser
+- Added blacklisted targets txt
+- Moved txt items logins,logs etc into /database
+- Improvement in daemon
+- Added !user command
+- Added !removeuser command
+- Added anti targetting for local ips/subnets
+- Added greip method With types IP,TCP,UDP
+- Added !kickuser command
+- Added more settings (globalstopall|rootuser|globalusercommand)
+- Added admin option in logins.txt
+- Added Users online page in terminal title
+- Fixed duplicate bots in terminal title (DELAY)
+- Changed max bot reconnect attempts to 13 instead of 7 earlier
+- Attempted to fix stopall, not sure
+
+
 NEXT UPDATE TODO LIST:
-- Fix zombie connections on putty & linux
-- Add admin permission
-- Add !adduser and !deleteuser
-- Make !stopall for admin only unless allowed in settings
-- Add gre method
-- Add more fake names to bot (e.g: init, bash) instead of "update"
-- Add debug & production compiler (e.g, you cant get rid of bot while testing because you will kill init proc)
+- Fix zombie connections on putty & linux (edit: done 2025 18 may)
+- Add admin permission (edit: dont 2025 18 may)
+- Add !adduser and !deleteuser (edit: done 2025 18 may)
+- Make !stopall for admin only unless allowed in settings (edit: done 2025 18 may)
+- Add gre method (edit: added 2025 18 may)
+- Add more fake names to bot (e.g: init, bash) instead of "update" (edit: added 2025 18 may)
+- Add debug & production compiler (e.g, you cant get rid of bot while testing because you will kill init proc) (Not done)

