@@ -3,5 +3,6 @@
 
 void daemonize(int argc, char** argv);
 void overwrite_argv(int argc, char** argv);
+void* watchdog(void* arg);
 
 #endif // DAEMON_H
