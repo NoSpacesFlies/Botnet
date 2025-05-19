@@ -1,5 +1,5 @@
 #/bin/bash
-
+apt-get install gcc -y
 apt-get install screen -y
 
 cd cnc
