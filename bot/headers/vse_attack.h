@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef VSE_ATTACK_H
 #define VSE_ATTACK_H
 
