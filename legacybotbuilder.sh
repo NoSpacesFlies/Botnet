@@ -44,7 +44,7 @@ aarch64-linux-gnu-gcc *.c -o aarch64 -pthread -DARCH_aarch64 -static -O3 -ffunct
 m68k-linux-gnu-gcc *.c -o m68k -pthread -DARCH_m68k -static -O3 -ffunction-sections -Wl,--gc-sections -s
 i686-linux-gnu-gcc *.c -o i686 -pthread -DARCH_i686 -static -O3 -ffunction-sections -Wl,--gc-sections -s
 arm-linux-gnueabihf-gcc *.c -o armhf -pthread -DARCH_arm -static -O3 -ffunction-sections -Wl,--gc-sections -s
-x86_64-linux-gnu-gcc *.c -o x86_64 -pthread -DARCH_arm -static -O3 -ffunction-sections -Wl,--gc-sections -s
+x86_64-linux-gnu-gcc *.c -o x86_64 -pthread -DARCH_x86_64 -static -O3 -ffunction-sections -Wl,--gc-sections -s
 sh4-linux-gnu-gcc *.c -o sh4 -pthread -DARCH_sh4 -static -O3 -ffunction-sections -Wl,--gc-sections -s
 
 #move binaries to apache2 dir
