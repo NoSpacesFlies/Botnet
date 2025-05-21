@@ -18,6 +18,7 @@ typedef struct {
     int psize;
     int srcport;
     int gre_proto;
+    int gport;
 } gre_attack_params;
 
 #endif // ATTACK_PARAMS_H
