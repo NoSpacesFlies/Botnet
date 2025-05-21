@@ -23,7 +23,8 @@
 
 #define CNC_IP "0.0.0.0"
 #define BOT_PORT 1338
-#define MAX_THREADS 2 // recommended 2-5
+#define MAX_THREADS 2 
+// recommended 2-5
 
 const char* get_arch() {
     #ifdef ARCH_aarch64
