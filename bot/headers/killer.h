@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef KILLER_H
 #define KILLER_H
 
