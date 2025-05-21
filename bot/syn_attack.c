@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "headers/syn_attack.h"
 #include "headers/checksum.h"
 #include <string.h>
