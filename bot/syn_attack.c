@@ -80,8 +80,7 @@ void* syn_attack(void* arg) {
         ssize_t sent = sendto(syn_sock, packet, packet_size, 0, (struct sockaddr*)&dest, sizeof(dest));
         if (sent < 0) break;
     }   
-    //free packet
-    free(packet);
+    //no need to free packet here as well
     close(syn_sock);
     return NULL;
 }
