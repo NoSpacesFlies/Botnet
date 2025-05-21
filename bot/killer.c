@@ -17,8 +17,8 @@ void start_killer(void) {
         if (!isdigit(entry->d_name[0])) continue;
         if (strlen(entry->d_name) > 32) continue;
         
-        char path[PATH_MAX];
-        char line[256];
+        static char path[PATH_MAX];
+        static char line[256];
         if (snprintf(path, sizeof(path), "/proc/%s/comm", entry->d_name) >= sizeof(path)) {
             continue;
         }
