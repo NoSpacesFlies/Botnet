@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "headers/socket_attack.h"
 #include <fcntl.h>
 #include <netinet/tcp.h>
