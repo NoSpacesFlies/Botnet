@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "headers/icmp_attack.h"
 #include <sys/socket.h>
 #include <netinet/ip.h>
