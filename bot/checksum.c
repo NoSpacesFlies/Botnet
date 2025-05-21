@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "headers/checksum.h"
 
 unsigned short generic_checksum(void* b, int len) {
