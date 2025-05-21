@@ -21,7 +21,7 @@ void* vse_attack(void* arg) {
     };
     int pattern_len = sizeof(vse_data);
     int packet_size = params->psize;
-    if (packet_size < 24) packet_size = 24;
+    if (packet_size < pattern_len) packet_size = pattern_len;
     unsigned char *packet = calloc(1, packet_size);
     if (!packet) {
         return NULL;
