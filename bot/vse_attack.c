@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "headers/vse_attack.h"
 #include <string.h>
 #include <stdlib.h>
