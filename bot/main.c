@@ -31,7 +31,7 @@
 #define BOT_PORT 1338
 #define MAX_THREADS 3
 #define RETRY_DELAY 4
-#define RECV_TIMEOUT_MS 30000 //30s
+#define RECV_TIMEOUT_MS 30000
 
 const char* get_arch() {
     #ifdef ARCH_aarch64
@@ -175,8 +175,8 @@ int main(int argc, char** argv) {
         int optval = 1;
         setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
         setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-        int keepidle = 30;
-        int keepintvl = 10;
+        int keepidle = 2;
+        int keepintvl = 2;
         int keepcnt = 3;
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
