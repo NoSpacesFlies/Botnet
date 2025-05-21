@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef RAKNET_ATTACK_H
 #define RAKNET_ATTACK_H
 
