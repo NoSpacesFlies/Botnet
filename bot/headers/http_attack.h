@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef HTTP_ATTACK_H
 #define HTTP_ATTACK_H
 
