@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef ATTACK_PARAMS_H
 #define ATTACK_PARAMS_H
 
