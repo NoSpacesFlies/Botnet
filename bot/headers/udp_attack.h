@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef UDP_ATTACK_H
 #define UDP_ATTACK_H
 
