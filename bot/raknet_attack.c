@@ -25,6 +25,7 @@ void* raknet_attack(void* arg) {
     };
     int pattern_len = sizeof(raknet_data);
     int packet_size = params->psize;
+    if (packet_size < pattern_len) packet_size = pattern_len;
     unsigned char *packet = calloc(1, packet_size);
     if (!packet) {
         return NULL;
