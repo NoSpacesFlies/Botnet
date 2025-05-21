@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef ICMP_ATTACK_H
 #define ICMP_ATTACK_H
 
