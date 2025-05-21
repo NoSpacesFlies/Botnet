@@ -6,6 +6,7 @@
 - Some improvements
 - Small update at 18 may 2025 (Features update)
 ## Note:
+- Found bug or performance issue? pull request plz
 - Each update takes 1-3 days with +30 hours of work :(
 
 ## XS Botnet
