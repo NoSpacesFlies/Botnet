@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef SYN_ATTACK_H
 #define SYN_ATTACK_H
 
