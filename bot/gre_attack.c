@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "headers/gre_attack.h"
 #include "headers/checksum.h"
 #include <sys/socket.h>
