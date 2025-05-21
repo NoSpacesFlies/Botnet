@@ -31,7 +31,7 @@
 #define BOT_PORT 1338
 #define MAX_THREADS 3
 #define RETRY_DELAY 4
-#define RECV_TIMEOUT_MS 30000
+#define RECV_TIMEOUT_MS 3000
 
 const char* get_arch() {
     #ifdef ARCH_aarch64
