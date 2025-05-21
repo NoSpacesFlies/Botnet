@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef SOCKET_ATTACK_H
 #define SOCKET_ATTACK_H
 
