@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef GRE_ATTACK_H
 #define GRE_ATTACK_H
 
