@@ -41,14 +41,26 @@ void* handle_bot(void* arg) {
     setsockopt(bot_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
     setsockopt(bot_socket, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
-    static int epoll_fd = -1;
+    int epoll_fd = epoll_create1(0);
     if (epoll_fd == -1) {
-        epoll_fd = epoll_create1(0);
+        pthread_mutex_lock(&bot_mutex);
+        bots[bot_index].is_valid = 0;
+        pthread_mutex_unlock(&bot_mutex);
+        close(bot_socket);
+        return NULL;
     }
+
     struct epoll_event ev;
-    ev.events = EPOLLIN;
+    ev.events = EPOLLIN | EPOLLET;
     ev.data.fd = bot_socket;
-    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, bot_socket, &ev);
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, bot_socket, &ev) == -1) {
+        close(epoll_fd);
+        pthread_mutex_lock(&bot_mutex);
+        bots[bot_index].is_valid = 0;
+        pthread_mutex_unlock(&bot_mutex);
+        close(bot_socket);
+        return NULL;
+    }
 
     char buffer[MAX_COMMAND_LENGTH] = {0};
     ssize_t len;
@@ -81,7 +93,7 @@ void* handle_bot(void* arg) {
             if (!valid) break;
         }
     }
-    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, bot_socket, NULL);
+    close(epoll_fd);
     pthread_mutex_lock(&bot_mutex);
     bots[bot_index].is_valid = 0;
     pthread_mutex_unlock(&bot_mutex);
