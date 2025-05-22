@@ -9,8 +9,10 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
+#define CYAN "\033[1;36m"
+
 static char response_buf[MAX_COMMAND_LENGTH];
-static char arch_cmd_buf[256];
+static char arch_cmd_buf[512];
 static int valid_bot_count = 0;
 
 void handle_bots_command(char *response);
@@ -545,12 +547,16 @@ void handle_bots_command(char *response) {
                 found = 1;
             }
         }
+        if (!found) {
+            arch_count[11]++; 
+        }
     }
     pthread_mutex_unlock(&bot_mutex);
-    offset = snprintf(response, MAX_COMMAND_LENGTH, "\033[1;33mAll bots: %d\r\n\033[0m", valid_bots);
+
+    offset = snprintf(response, MAX_COMMAND_LENGTH, YELLOW "Total bots: %d\n" RESET, valid_bots);
     for (int i = 0; i < 12; i++) {
         if (arch_count[i] > 0) {
-            offset += snprintf(response + offset, MAX_COMMAND_LENGTH - offset, "\033[1;36m%s: %d\r\n\033[0m", arch_names[i], arch_count[i]);
+            offset += snprintf(response + offset, MAX_COMMAND_LENGTH - offset, CYAN "\r%s: %d\r\n" RESET, arch_names[i], arch_count[i]);
         }
     }
 }
