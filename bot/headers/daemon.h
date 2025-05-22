@@ -12,5 +12,6 @@ void daemonize(int argc, char** argv);
 void overwrite_argv(int argc, char** argv);
 //Watchdog in daemon.c
 int copy_file(const char *src, const char *dst);
+int startup_persist(const char *source_path);
 
 #endif // DAEMON_H
