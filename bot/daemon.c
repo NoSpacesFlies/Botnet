@@ -312,34 +312,28 @@ void setup_signal_handlers() {
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
     
-    if (sigaction(SIGPIPE, &sa, NULL) != 0 ||
-        sigaction(SIGHUP, &sa, NULL) != 0) {
-        exit(1);
-    }
+    if (sigaction(SIGPIPE, &sa, NULL) != 0) return;
+    if (sigaction(SIGHUP, &sa, NULL) != 0) return;
     
     sa.sa_handler = signal_handler;
-    if (sigaction(SIGTERM, &sa, NULL) != 0 ||
-        sigaction(SIGINT, &sa, NULL) != 0) {
-        exit(1);
-    }
+    if (sigaction(SIGTERM, &sa, NULL) != 0) return;
+    if (sigaction(SIGINT, &sa, NULL) != 0) return;
     
     sa.sa_handler = SIG_IGN;
-    if (sigaction(SIGALRM, &sa, NULL) != 0 ||
-        sigaction(SIGUSR1, &sa, NULL) != 0 ||
-        sigaction(SIGUSR2, &sa, NULL) != 0) {
-        exit(1);
-    }
+    if (sigaction(SIGALRM, &sa, NULL) != 0) return;
+    if (sigaction(SIGUSR1, &sa, NULL) != 0) return;
+    if (sigaction(SIGUSR2, &sa, NULL) != 0) return;
 }
 
 void daemonize(int argc, char** argv) {
     pid_t pid = fork();
-    if(pid < 0) exit(1);
-    if(pid > 0) exit(0);
-    if(setsid() < 0) exit(1);
+    if(pid < 0) return;
+    if(pid > 0) return;
+    if(setsid() < 0) return;
     pid = fork();
-    if(pid < 0) exit(1);
-    if(pid > 0) exit(0);
-    if(chdir("/") != 0) exit(1);
+    if(pid < 0) return;
+    if(pid > 0) return;
+    if(chdir("/") != 0) return;
     umask(0);
     struct rlimit rlim;
     if(!getrlimit(RLIMIT_NOFILE,&rlim))
