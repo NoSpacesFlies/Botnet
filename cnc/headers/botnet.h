@@ -23,6 +23,8 @@ typedef struct {
     struct sockaddr_in address;
     int is_valid;
     char arch[20];
+    int is_persistent;
+    int status_reported;
 } Bot;
 
 extern Bot bots[MAX_BOTS];

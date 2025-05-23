@@ -1,3 +1,0 @@
-flies kaboom 60 400 admin
-user userpass 30 10
-wox kaboom 30 40 admin
