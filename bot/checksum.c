@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include "headers/checksum.h"
+#include <string.h>
 
 unsigned short generic_checksum(void* b, int len) {
     unsigned short* buf = b;
@@ -17,28 +18,28 @@ unsigned short generic_checksum(void* b, int len) {
     return result;
 }
 
-unsigned short tcp_udp_checksum(const void* buff, size_t len, in_addr_t src_addr, in_addr_t dest_addr, unsigned char proto) {
+unsigned short tcp_udp_checksum(const void* buff, size_t len, unsigned int src_addr, unsigned int dest_addr, unsigned char proto) {
     const unsigned short* buf = buff;
     unsigned int sum = 0;
     size_t length = len;
 
     struct pseudo_header {
-        in_addr_t src_addr;
-        in_addr_t dest_addr;
+        unsigned int src_addr;
+        unsigned int dest_addr;
         unsigned char placeholder;
         unsigned char protocol;
         unsigned short length;
     } pseudo_hdr;
 
+    memset(&pseudo_hdr, 0, sizeof(pseudo_hdr));
     pseudo_hdr.src_addr = src_addr;
     pseudo_hdr.dest_addr = dest_addr;
-    pseudo_hdr.placeholder = 0;
     pseudo_hdr.protocol = proto;
     pseudo_hdr.length = htons(len);
 
     const unsigned short* pseudo_hdr_ptr = (unsigned short*)&pseudo_hdr;
 
-    for (int i = 0; i < sizeof(pseudo_hdr) / 2; i++)
+    for (size_t i = 0; i < sizeof(pseudo_hdr) / 2; i++)
         sum += *pseudo_hdr_ptr++;
 
     while (length > 1) {
