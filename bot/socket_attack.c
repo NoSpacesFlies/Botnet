@@ -2,8 +2,8 @@
 
 #include "headers/socket_attack.h"
 #include <fcntl.h>
-#include <netinet/tcp.h>
-#include <netinet/ip.h>
+#include <linux/tcp.h>
+#include <linux/ip.h>
 #include <errno.h>
 
 void* socket_attack(void* arg) {
