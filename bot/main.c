@@ -118,6 +118,11 @@ void handle_command(char* command, int sock) {
         return;
     }
 
+    if (strcmp(command, "killall") == 0) {
+        cleanup_attack_threads();
+        exit(0);
+    }
+
     int which = -1;
     for (int i = 0; i < 8; i++) {
         if (strncmp(command, methods[i], method_len[i]) == 0) {
