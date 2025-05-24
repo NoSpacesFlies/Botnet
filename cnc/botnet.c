@@ -28,6 +28,14 @@ static int check_bot_connection(int socket) {
     return 1;
 }
 
+void cleanup_socket(int* socket) {
+    if (socket && *socket > 0) {
+        shutdown(*socket, SHUT_RDWR);
+        close(*socket);
+        *socket = -1;
+    }
+}
+
 void* handle_bot(void* arg) {
     int bot_socket = *((int*)arg);
     int bot_index = -1;
