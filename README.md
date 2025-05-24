@@ -2,13 +2,9 @@
 
 # Changelog:
 - Read Changelog.md for changelog
-- CNC Just updated at 18 may 2025
-- Some improvements
-- Small update at 18 may 2025 (Features update)
-## Note:
-- Found bug or performance issue? pull request plz
-- Each update takes 1-3 days with +30 hours of work :(
-
+- CNC Just updated at 24 may 2025
+## Thx to ppl doing Pull requests:
+- oxyjdv
 ## XS Botnet
 - made by: daylight911 (discord), FuckIsra3l(telegram)
 - Made in github codespaces(Make & C ext, Copilot).
