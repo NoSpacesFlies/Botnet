@@ -43,7 +43,7 @@ arm-linux-gnueabi-gcc *.c -o arm -pthread -DARCH_arm -static -O3 -ffunction-sect
 aarch64-linux-gnu-gcc *.c -o aarch64 -pthread -DARCH_aarch64 -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
 m68k-linux-gnu-gcc *.c -o m68k -pthread -DARCH_m68k -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
 i686-linux-gnu-gcc *.c -o i686 -pthread -DARCH_i686 -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
-arm-linux-gnueabihf-gcc *.c -o armhf -pthread -DARCH_arm -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
+arm-linux-gnueabihf-gcc *.c -o armhf -pthread -DARCH_armhf -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
 x86_64-linux-gnu-gcc *.c -o x86_64 -pthread -DARCH_x86_64 -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
 sh4-linux-gnu-gcc *.c -o sh4 -pthread -DARCH_sh4 -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
 
