@@ -1,4 +1,4 @@
-![Img](image.png?raw=true "Screenshot")
+![Img](image.webp?raw=true "Screenshot")
 
 # Changelog:
 - Read Changelog.md for changelog
