@@ -7,7 +7,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <signal.h>
-#include <netinet/tcp.h>
+#include <linux/tcp.h>
 #include <poll.h>
 
 int user_sockets[MAX_USERS] = {0};
