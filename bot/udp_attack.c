@@ -5,8 +5,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
-#include <netinet/ip.h>
-#include <netinet/udp.h>
+#include <linux/ip.h>
+#include <linux/udp.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
