@@ -54,7 +54,7 @@ ATK LIST   C O M M A N D
 */
 void handle_attack_list_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
-             PINK "!vse - UDP Game VSE Query Flood\r\n"
+             CYAN "!vse - UDP Game VSE Query Flood\r\n"
              "!raknet - RakNet UnConnectedPing flood\r\n"
              "!syn - TCP SYN+PSH Flood\r\n"
              "!socket - TCP Stream Connections Flood\r\n"
