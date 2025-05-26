@@ -131,9 +131,9 @@ void* bot_listener(void* arg) {
     int keepalive_time = 30;
     int keepalive_intvl = 5;  
     int keepalive_probes = 5; 
-    setsockopt(bot_server_socket, SOL_TCP, TCP_KEEPIDLE, &keepalive_time, sizeof(keepalive_time));
-    setsockopt(bot_server_socket, SOL_TCP, TCP_KEEPINTVL, &keepalive_intvl, sizeof(keepalive_intvl));
-    setsockopt(bot_server_socket, SOL_TCP, TCP_KEEPCNT, &keepalive_probes, sizeof(keepalive_probes));
+    setsockopt(bot_server_socket, SOL_SOCKET, TCP_KEEPIDLE, &keepalive_time, sizeof(keepalive_time));
+    setsockopt(bot_server_socket, SOL_SOCKET, TCP_KEEPINTVL, &keepalive_intvl, sizeof(keepalive_intvl));
+    setsockopt(bot_server_socket, SOL_SOCKET, TCP_KEEPCNT, &keepalive_probes, sizeof(keepalive_probes));
     
     struct sockaddr_in bot_server_addr;
     memset(&bot_server_addr, 0, sizeof(bot_server_addr));
@@ -160,9 +160,9 @@ void* bot_listener(void* arg) {
         }
 
         setsockopt(*bot_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
-        setsockopt(*bot_socket, SOL_TCP, TCP_KEEPIDLE, &keepalive_time, sizeof(keepalive_time));
-        setsockopt(*bot_socket, SOL_TCP, TCP_KEEPINTVL, &keepalive_intvl, sizeof(keepalive_intvl));
-        setsockopt(*bot_socket, SOL_TCP, TCP_KEEPCNT, &keepalive_probes, sizeof(keepalive_probes));
+        setsockopt(*bot_socket, SOL_SOCKET, TCP_KEEPIDLE, &keepalive_time, sizeof(keepalive_time));
+        setsockopt(*bot_socket, SOL_SOCKET, TCP_KEEPINTVL, &keepalive_intvl, sizeof(keepalive_intvl));
+        setsockopt(*bot_socket, SOL_SOCKET, TCP_KEEPCNT, &keepalive_probes, sizeof(keepalive_probes));
 
         char archbuf[64] = {0};
         fd_set readfds;
