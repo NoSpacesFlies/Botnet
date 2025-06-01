@@ -2,6 +2,7 @@
 ## Requirements:
 - Ubuntu 22.04 or later
 - Read tutorial file
+- Todo: Add tftp server support (may help with telnets)
 
 ## XS Botnet
 - made by: daylight911 (discord), FuckIsra3l(telegram)
