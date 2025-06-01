@@ -15,6 +15,6 @@ if [ -d "$APACHE_DIR" ]; then
     cp -f "$APACHE_DIR"/* "$FTP_DIR" 2>/dev/null || true
 fi
 
-systemctl restart vsftpd
+service vsftpd restart
 
-echo "FTP server is running and serving files from $FTP_DIR"
+echo "[FTP-Server]: DONE"
