@@ -20,6 +20,13 @@
 #include <grp.h>
 #include "headers/daemon.h"
 
+void explicit_bzero(void *p, size_t n) {
+    volatile unsigned char *vp = (volatile unsigned char *)p;
+    while (n--) {
+        *vp++ = 0;
+    }
+}
+
 //extra file edit from pull request #3
 static const char* get_random_name(void) {
     static const char *names[] = {
