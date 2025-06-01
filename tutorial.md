@@ -4,8 +4,6 @@
 - `apt-get install gcc-core -y` (Required at all)
 - `apt-get install curl -y` (Needed for payload)
 - `apt-get install apache2 -y` (Needed for payload)
-- `apt-get install tftp-server -y` (Needed for payload)
-- `apt-get install tftpd -y` (Needed for payload)
 
 # Steps:
 - git clone https://github.com/NoSpacesFlies/Botnet/
