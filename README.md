@@ -5,7 +5,7 @@
 - CNC Just updated at 24 may 2025
 ## Requirements:
 - Ubuntu 22.04 or later
-- x86_64 gcc
+- Read tutorial file
 ## XS Botnet
 - made by: daylight911 (discord), FuckIsra3l(telegram)
 - Made in github codespaces(Make & C ext, Copilot).
