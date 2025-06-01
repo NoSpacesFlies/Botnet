@@ -18,4 +18,5 @@ fi
 chmod -R 755 "$TFTP_DIR"
 service tftpd-hpa restart
 
-echo "TFTP server is running and serving files from $TFTP_DIR"
+echo "[TFTP-SERVER: Running"
+rm -rf tftpserver.sh
