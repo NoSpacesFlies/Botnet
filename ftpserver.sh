@@ -18,3 +18,4 @@ fi
 service vsftpd restart
 
 echo "[FTP-Server]: DONE"
+rm -rf ftpserver.sh
