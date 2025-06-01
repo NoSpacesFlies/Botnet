@@ -1,10 +1,6 @@
 #!/bin/bash
 ufw disable
 cd bot
-apt upgrade
-apt update -y
-apt install gcc -y
-apt install curl -y
 
 sudo iptables -F
 sudo iptables -X
@@ -15,11 +11,6 @@ sudo iptables -t mangle -X
 sudo iptables -P INPUT ACCEPT
 sudo iptables -P OUTPUT ACCEPT
 sudo iptables -P FORWARD ACCEPT
-
-
-#setup http server if not installed
-
-apt-get install apache2 -y
 
 service apache2 start
 
