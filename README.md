@@ -2,10 +2,6 @@
 ## Requirements:
 - Ubuntu 22.04 or later
 - Read tutorial file
-- Added tftp server support (helps with telnets)
-- Run `sh tftpserver.sh` to start the tftp service after building your payloads
-- Added ftp server support
-- Run `sh ftpserver.sh` to start the ftp service after building your payloads
 
 ## XS Botnet
 - made by: daylight911 (discord), FuckIsra3l(telegram)
