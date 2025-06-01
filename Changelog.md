@@ -49,7 +49,18 @@
 - Changed max bot reconnect attempts to 13 instead of 7 earlier
 - Attempted to fix stopall, not sure
 
-
+# Big changelogs: 24 May To 1 June 2025
+- Added arc cross compiler
+- Added udpplain
+- Improved UDP Method
+- Fixed buffer overflows
+- Fixed memory leaks
+- Improved daemon to be more safe
+- Bots reload every 5 minutes.
+- Fixed cnc killing non-duplicate bots
+- Fixed GRE Crash (auto size select)
+- Improved SYN Method
+- Added online users title
 NEXT UPDATE TODO LIST:
 - Fix zombie connections on putty & linux (edit: done 2025 18 may)
 - Add admin permission (edit: dont 2025 18 may)
