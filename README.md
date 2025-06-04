@@ -1,4 +1,9 @@
 ![Img](image.webp?raw=true "Screenshot")
+# Note:
+- This project is no longer being worked on.
+- This current version contains bugs & critical issues or other
+- Bugs/other: (Infinite Reconnect, No killer, stability issue, cpu optimisation issues etc)
+
 ## Requirements:
 - Ubuntu 22.04 or later
 - Read tutorial file
