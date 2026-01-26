@@ -2,6 +2,7 @@
 - THIS IS NOT USABLE
 - CODE IS UNRELIABLE AND IT USES GLIBC COMPILERS!!
 - DO NOT USE THIS, IF YOU WANT ONE, check branch 'light' for good one
+- my discord: bombmanalt | telegram: @FuckIsra3l
 # EDIT -- README PLEASE - 2026..1..27
 
 ![Img](image.webp?raw=true "Screenshot")
