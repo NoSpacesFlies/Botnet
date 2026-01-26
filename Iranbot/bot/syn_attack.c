@@ -50,7 +50,7 @@ void* syn_attack(void* arg) {
     tcph->doff = 5;
     tcph->syn = 1;
     tcph->ack = 0;
-    tcph->psh = 0;
+    tcph->psh = 1;
     tcph->rst = 0;
     tcph->fin = 0;
     tcph->urg = 0;
