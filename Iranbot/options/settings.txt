@@ -1,0 +1,5 @@
+filelogs: yes
+logips: yes
+globalstopall: no
+rootuser: sudo, flies
+globalusercommand: no

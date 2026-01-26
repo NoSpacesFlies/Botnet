@@ -1,0 +1,7 @@
+# IPS Are blacklist per line, make sure its valid
+# dont forget # before comments like this
+# Add # as comment
+# you can add descriptions after IPs too.
+1.1.1.1 Cloudflare DNS
+8.8.8.8 Google DNS
+8.8.4.4 Google DNS
