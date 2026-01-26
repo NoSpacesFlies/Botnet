@@ -1,7 +1,7 @@
 # EDIT -- README PLEASE 2026..1..27
-THIS IS NOT USABLE
-CODE IS UNRELIABLE
-DO NOT USE THIS, IF YOU WANT ONE, check branch 'light' for good one
+- THIS IS NOT USABLE
+- CODE IS UNRELIABLE AND IT USES GLIBC COMPILERS!!
+- DO NOT USE THIS, IF YOU WANT ONE, check branch 'light' for good one
 # EDIT -- README PLEASE - 2026..1..27
 
 ![Img](image.webp?raw=true "Screenshot")
