@@ -1,0 +1,9 @@
+Copyright (c) 2026 NoSpacesFlies
+
+All rights reserved.
+
+This software and associated files are the property of NoSpacesFlies.
+Unauthorized copying, redistribution, modification, or use of this software,
+via any medium, is strictly prohibited without prior written consent.
+
+DO NOT DISTRIBUTE.
