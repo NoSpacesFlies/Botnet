@@ -1,9 +1,7 @@
-# EDIT -- README PLEASE 2026..1..27
-- THIS IS NOT USABLE
-- CODE IS UNRELIABLE AND IT USES GLIBC COMPILERS!!
+# EDIT
+- Do not distribute this without forks, if found, your github account may be suspended according to license
 - DO NOT USE THIS, IF YOU WANT ONE, check branch 'light' for good one
 - my discord: bombmanalt | telegram: @FuckIsra3l
-# EDIT -- README PLEASE - 2026..1..27
 
 ![Img](image.webp?raw=true "Screenshot")
 # Note:
